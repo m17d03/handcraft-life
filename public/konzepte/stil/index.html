@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#17130f" />
+<meta name="robots" content="noindex" />
+<title>Stil-Varianten A/B/C · KONZEPT · Handcraft Life</title>
+<link rel="stylesheet" href="./stil.css" />
+</head>
+<body>
+<main>
+<span class="konzept sticky">KONZEPT – kein Spielscreenshot</span>
+<h1>Handcraft Life · Welcher Stil?</h1>
+<p>Drei Stilrichtungen für die Werkstatt. Alle nutzen dieselben 3D-Modelle – sie unterscheiden sich in <b>Licht, Farben, Materialwirkung und Bedienoberfläche</b>.</p>
+<div class="hinweis"><b>Wichtig:</b> Alles auf dieser Seite ist mit HTML/CSS gezeichnet. Die kleinen Szenen sind <b>Stimmungsproben</b>, keine Spielgrafik und kein Screenshot. Wie das Spiel wirklich aussieht, zeigt erst der Engine-Spike mit echten Texturen.</div>
+<nav class="nav" aria-label="Varianten"><a class="a" href="#a">A Honig</a><a class="b" href="#b">B Nordisch</a><a class="c" href="#c">C Lampe</a></nav>
+
+<section class="variante v-a" id="a">
+  <span class="konzept">KONZEPT – kein Spielscreenshot</span>
+  <h2>Variante A – „Honigwerkstatt“<span class="badge">Empfehlung</span></h2>
+  <p class="lead">Warmer Spätnachmittag: Sonne fällt durchs Fenster auf die Werkbank. Helle Fichte auf dunkler Eiche, kühle Schatten. Gleiche Farben wie die Steuerungs-Mockups.</p>
+
+  <h3>Stimmung und HUD-Beispiel</h3>
+  <div class="scene" role="img" aria-label="Mit CSS gezeichnete Stimmungsprobe Variante A: Werkbank mit Brett, Massband und Säge, darüber das HUD der Arbeitsansicht">
+    <div class="planks-wall"></div><div class="window"></div><div class="floor"></div>
+    <div class="leg l"></div><div class="leg r"></div><div class="bench"></div>
+    <div class="plank"></div><div class="endgrain"></div><div class="pencil"></div>
+    <div class="tape-body"></div><div class="tape-band"></div>
+    <div class="saw"><div class="blade"></div><div class="teeth"></div><div class="grip"></div></div>
+    <div class="beam"></div><div class="lamp"></div><div class="cone"></div><div class="vignette"></div>
+    <div class="hud">
+      <div class="btn back">‹ Zurück</div>
+      <div class="steps"><span class="pill on">1 Messen</span><span class="pill">2 Anzeichnen</span><span class="pill">3 Sägen</span></div>
+      <div class="btn pause">II</div>
+      <div class="auftrag">Auftrag: Regalbrett 450 mm</div>
+      <div class="loupe">450 mm</div>
+      <div class="stamp">KONZEPT</div>
+      <div class="btn minus">−1 mm</div><div class="btn plus">+1 mm</div>
+      <div class="readout"><b>450 mm</b><small>Ziel 450 mm</small></div>
+      <div class="btn main">✎ Anzeichnen</div>
+    </div>
+  </div>
+  <p class="cap"><span class="probe-tag">Stimmungsprobe (CSS)</span> Quer-Bildschirm verkleinert. Holz, Licht und Säge sind mit CSS angedeutet – <b>keine Spielgrafik</b>. Das HUD entspricht der Werkbank-Ansicht aus den Steuerungs-Mockups, nur in dieser Variante eingefärbt.</p>
+
+  <h3>Farbpalette</h3>
+  <div class="palette"><div class="sw"><i style="background:#1F1A15"></i><span><b>#1F1A15</b><br>Tiefen, UI-Grund</span></div><div class="sw"><i style="background:#3B2A1C"></i><span><b>#3B2A1C</b><br>Boden</span></div><div class="sw"><i style="background:#8E5D33"></i><span><b>#8E5D33</b><br>Nussbaum</span></div><div class="sw"><i style="background:#C58F55"></i><span><b>#C58F55</b><br>Eiche, Werkbank</span></div><div class="sw"><i style="background:#E3C08D"></i><span><b>#E3C08D</b><br>Fichte, Werkstück</span></div><div class="sw"><i style="background:#F3E9DC"></i><span><b>#F3E9DC</b><br>Licht, Text</span></div><div class="sw"><i style="background:#D9A35B"></i><span><b>#D9A35B</b><br>Akzent Bernstein</span></div><div class="sw"><i style="background:#FFD08A"></i><span><b>#FFD08A</b><br>Hervorhebung</span></div><div class="sw"><i style="background:#7D8A8F"></i><span><b>#7D8A8F</b><br>Stahl</span></div><div class="sw"><i style="background:#2F5A4A"></i><span><b>#2F5A4A</b><br>Tannengrün, PLA</span></div>
+    <div class="sw"><i style="background:linear-gradient(90deg,#8FD18B 33%,#FFB36B 33% 66%,#FF8A7A 66%)"></i><span><b>Signale</b><br>gut · Warnung · schlecht</span></div>
+  </div>
+
+  <h3>Materialanmutung</h3>
+  <div class="mats">
+    <div class="mat"><i class="holz"></i><span>Werkstück-Holz, Fase oben</span></div>
+    <div class="mat"><i class="stirn"></i><span>Stirnholz (Schnittkante)</span></div>
+    <div class="mat"><i class="stahl"></i><span>Stahl gebürstet</span></div>
+    <div class="mat"><i class="pla"></i><span>3D-Druck PLA, Schichtlinien</span></div>
+  </div>
+  <p class="cap"><span class="probe-tag">Stimmungsprobe (CSS)</span> Nur Farbe und Richtung. Im Spiel kommen echte PBR-Texturen dazu.</p>
+
+  <h3>Schrift und Bedienelemente</h3>
+  <div class="typo">
+    <p class="t-head">Auftrag: Regalbrett</p>
+    <p class="t-body">Fichte, 450 mm lang, Toleranz ± 1 mm. Kunde: Schreinerei Huber.</p>
+    <p class="t-num">450 mm<small>Ziel 450 mm</small></p>
+    <span class="t-btn">✎ Anzeichnen</span>
+    <div class="t-sig"><span style="background:#8FD18B">✓ passt</span><span style="background:#FFB36B">Strich verlassen</span><span style="background:#FF8A7A">Zu schnell</span></div>
+    <p class="fontname">Systemschrift SF Pro (auf dem iPhone eingebaut) · keine externen Schriften</p>
+  </div>
+
+  <h3>Eckdaten</h3>
+  <dl class="eck">
+    <dt>Licht</dt><dd>tiefe Sonne ca. 3800 K, lange weiche Schatten, kühles Blau-Grau in den Schatten</dd>
+    <dt>Kanten</dt><dd>harte Silhouetten, jede Werkstückkante mit 0,5–1 mm Fase, die das Licht fängt</dd>
+    <dt>UI</dt><dd>dunkle halbtransparente Panels, Bernsteinrand, Ecken 14 pt</dd>
+    <dt>Handy-Kosten</dt><dd>mittel – 1 Sonnenschatten nur um die Werkbank, Rest gebacken</dd>
+    <dt>Stärke</dt><dd>erfüllt „warmes, natürliches Licht“ am direktesten; Massband und Schnittkante gut lesbar</dd>
+    <dt>Schwäche</dt><dd>Gefahr „alles orange“ – Holzarten über Helligkeit und Maserung trennen</dd>
+  </dl>
+
+  <div class="frage">Welche Variante gefällt dir? (A/B/C)<small>Antwort einfach in den Chat schreiben, z. B. „A“ oder „B, aber wärmer“.</small></div>
+</section>
+
+<section class="variante v-b" id="b">
+  <span class="konzept">KONZEPT – kein Spielscreenshot</span>
+  <h2>Variante B – „Nordische Werkbank“</h2>
+  <p class="lead">Heller, diffuser Tag in einer aufgeräumten Werkstatt: Birke, Esche, weisse Wände, Griffe in Signalorange.</p>
+
+  <h3>Stimmung und HUD-Beispiel</h3>
+  <div class="scene" role="img" aria-label="Mit CSS gezeichnete Stimmungsprobe Variante B: Werkbank mit Brett, Massband und Säge, darüber das HUD der Arbeitsansicht">
+    <div class="planks-wall"></div><div class="window"></div><div class="floor"></div>
+    <div class="leg l"></div><div class="leg r"></div><div class="bench"></div>
+    <div class="plank"></div><div class="endgrain"></div><div class="pencil"></div>
+    <div class="tape-body"></div><div class="tape-band"></div>
+    <div class="saw"><div class="blade"></div><div class="teeth"></div><div class="grip"></div></div>
+    <div class="beam"></div><div class="lamp"></div><div class="cone"></div><div class="vignette"></div>
+    <div class="hud">
+      <div class="btn back">‹ Zurück</div>
+      <div class="steps"><span class="pill on">1 Messen</span><span class="pill">2 Anzeichnen</span><span class="pill">3 Sägen</span></div>
+      <div class="btn pause">II</div>
+      <div class="auftrag">Auftrag: Regalbrett 450 mm</div>
+      <div class="loupe">450 mm</div>
+      <div class="stamp">KONZEPT</div>
+      <div class="btn minus">−1 mm</div><div class="btn plus">+1 mm</div>
+      <div class="readout"><b>450 mm</b><small>Ziel 450 mm</small></div>
+      <div class="btn main">✎ Anzeichnen</div>
+    </div>
+  </div>
+  <p class="cap"><span class="probe-tag">Stimmungsprobe (CSS)</span> Quer-Bildschirm verkleinert. Holz, Licht und Säge sind mit CSS angedeutet – <b>keine Spielgrafik</b>. Das HUD entspricht der Werkbank-Ansicht aus den Steuerungs-Mockups, nur in dieser Variante eingefärbt.</p>
+
+  <h3>Farbpalette</h3>
+  <div class="palette"><div class="sw"><i style="background:#F4F1EA"></i><span><b>#F4F1EA</b><br>Wand warmweiss</span></div><div class="sw"><i style="background:#DCD3C4"></i><span><b>#DCD3C4</b><br>Birke, Sperrholz</span></div><div class="sw"><i style="background:#C9A979"></i><span><b>#C9A979</b><br>Esche, Werkstück</span></div><div class="sw"><i style="background:#A27B4E"></i><span><b>#A27B4E</b><br>Eiche geölt</span></div><div class="sw"><i style="background:#8C9499"></i><span><b>#8C9499</b><br>Stahl, Zink</span></div><div class="sw"><i style="background:#4A5560"></i><span><b>#4A5560</b><br>Schiefer</span></div><div class="sw"><i style="background:#1E2A33"></i><span><b>#1E2A33</b><br>UI-Text</span></div><div class="sw"><i style="background:#E8692C"></i><span><b>#E8692C</b><br>Akzent Signalorange</span></div><div class="sw"><i style="background:#3E7CB1"></i><span><b>#3E7CB1</b><br>Himmelblau, PLA</span></div>
+    <div class="sw"><i style="background:linear-gradient(90deg,#2E8B57 33%,#D98E04 33% 66%,#C8432F 66%)"></i><span><b>Signale</b><br>gut · Warnung · schlecht</span></div>
+  </div>
+
+  <h3>Materialanmutung</h3>
+  <div class="mats">
+    <div class="mat"><i class="holz"></i><span>Werkstück-Holz, Fase oben</span></div>
+    <div class="mat"><i class="stirn"></i><span>Stirnholz (Schnittkante)</span></div>
+    <div class="mat"><i class="stahl"></i><span>Stahl gebürstet</span></div>
+    <div class="mat"><i class="pla"></i><span>3D-Druck PLA, Schichtlinien</span></div>
+  </div>
+  <p class="cap"><span class="probe-tag">Stimmungsprobe (CSS)</span> Nur Farbe und Richtung. Im Spiel kommen echte PBR-Texturen dazu.</p>
+
+  <h3>Schrift und Bedienelemente</h3>
+  <div class="typo">
+    <p class="t-head">Auftrag: Regalbrett</p>
+    <p class="t-body">Fichte, 450 mm lang, Toleranz ± 1 mm. Kunde: Schreinerei Huber.</p>
+    <p class="t-num">450 mm<small>Ziel 450 mm</small></p>
+    <span class="t-btn">✎ Anzeichnen</span>
+    <div class="t-sig"><span style="background:#2E8B57">✓ passt</span><span style="background:#D98E04">Strich verlassen</span><span style="background:#C8432F">Zu schnell</span></div>
+    <p class="fontname">SF Pro Rounded (abgerundete Systemschrift) · keine externen Schriften</p>
+  </div>
+
+  <h3>Eckdaten</h3>
+  <dl class="eck">
+    <dt>Licht</dt><dd>diffuses Tageslicht ca. 5800 K, kurze weiche Schatten, wenig Kontrast</dd>
+    <dt>Kanten</dt><dd>sehr klar, braucht gebackene Umgebungsverdeckung, sonst wirkt es flach</dd>
+    <dt>UI</dt><dd>helle deckende Karten, dunkler Text, Ecken 10 pt</dd>
+    <dt>Handy-Kosten</dt><dd>niedrig – fast alles backbar, kaum Nachbearbeitung</dd>
+    <dt>Stärke</dt><dd>am günstigsten und in der Sonne am besten lesbar</dd>
+    <dt>Schwäche</dt><dd>zeigt jede unscharfe Textur; kann steril wirken; eher kühl statt „warmes Licht“</dd>
+  </dl>
+
+  <div class="frage">Welche Variante gefällt dir? (A/B/C)<small>Antwort einfach in den Chat schreiben, z. B. „A“ oder „B, aber wärmer“.</small></div>
+</section>
+
+<section class="variante v-c" id="c">
+  <span class="konzept">KONZEPT – kein Spielscreenshot</span>
+  <h2>Variante C – „Lampenlicht am Abend“</h2>
+  <p class="lead">Abend: eine Lampe über der Werkbank, der Raum fällt ins Dunkle. Walnuss, Messing, Glanzlichter auf Stahl.</p>
+
+  <h3>Stimmung und HUD-Beispiel</h3>
+  <div class="scene" role="img" aria-label="Mit CSS gezeichnete Stimmungsprobe Variante C: Werkbank mit Brett, Massband und Säge, darüber das HUD der Arbeitsansicht">
+    <div class="planks-wall"></div><div class="window"></div><div class="floor"></div>
+    <div class="leg l"></div><div class="leg r"></div><div class="bench"></div>
+    <div class="plank"></div><div class="endgrain"></div><div class="pencil"></div>
+    <div class="tape-body"></div><div class="tape-band"></div>
+    <div class="saw"><div class="blade"></div><div class="teeth"></div><div class="grip"></div></div>
+    <div class="beam"></div><div class="lamp"></div><div class="cone"></div><div class="vignette"></div>
+    <div class="hud">
+      <div class="btn back">‹ Zurück</div>
+      <div class="steps"><span class="pill on">1 Messen</span><span class="pill">2 Anzeichnen</span><span class="pill">3 Sägen</span></div>
+      <div class="btn pause">II</div>
+      <div class="auftrag">Auftrag: Regalbrett 450 mm</div>
+      <div class="loupe">450 mm</div>
+      <div class="stamp">KONZEPT</div>
+      <div class="btn minus">−1 mm</div><div class="btn plus">+1 mm</div>
+      <div class="readout"><b>450 mm</b><small>Ziel 450 mm</small></div>
+      <div class="btn main">✎ Anzeichnen</div>
+    </div>
+  </div>
+  <p class="cap"><span class="probe-tag">Stimmungsprobe (CSS)</span> Quer-Bildschirm verkleinert. Holz, Licht und Säge sind mit CSS angedeutet – <b>keine Spielgrafik</b>. Das HUD entspricht der Werkbank-Ansicht aus den Steuerungs-Mockups, nur in dieser Variante eingefärbt.</p>
+
+  <h3>Farbpalette</h3>
+  <div class="palette"><div class="sw"><i style="background:#0F0D0B"></i><span><b>#0F0D0B</b><br>Tiefschwarzbraun</span></div><div class="sw"><i style="background:#241C16"></i><span><b>#241C16</b><br>Schattenholz</span></div><div class="sw"><i style="background:#5A3A22"></i><span><b>#5A3A22</b><br>Walnuss</span></div><div class="sw"><i style="background:#A0652F"></i><span><b>#A0652F</b><br>Messing dunkel</span></div><div class="sw"><i style="background:#E0A24A"></i><span><b>#E0A24A</b><br>Lampenlicht</span></div><div class="sw"><i style="background:#FFE3B0"></i><span><b>#FFE3B0</b><br>Glanzlicht</span></div><div class="sw"><i style="background:#3C4A52"></i><span><b>#3C4A52</b><br>Stahlblau</span></div><div class="sw"><i style="background:#B8C4C9"></i><span><b>#B8C4C9</b><br>Stahl hell</span></div><div class="sw"><i style="background:#9C2F2A"></i><span><b>#9C2F2A</b><br>Ochsenblut, PLA</span></div><div class="sw"><i style="background:#EDE3D3"></i><span><b>#EDE3D3</b><br>UI-Text</span></div>
+    <div class="sw"><i style="background:linear-gradient(90deg,#9BCB7A 33%,#E8B04A 33% 66%,#E0675A 66%)"></i><span><b>Signale</b><br>gut · Warnung · schlecht</span></div>
+  </div>
+
+  <h3>Materialanmutung</h3>
+  <div class="mats">
+    <div class="mat"><i class="holz"></i><span>Werkstück-Holz, Fase oben</span></div>
+    <div class="mat"><i class="stirn"></i><span>Stirnholz (Schnittkante)</span></div>
+    <div class="mat"><i class="stahl"></i><span>Stahl gebürstet</span></div>
+    <div class="mat"><i class="pla"></i><span>3D-Druck PLA, Schichtlinien</span></div>
+  </div>
+  <p class="cap"><span class="probe-tag">Stimmungsprobe (CSS)</span> Nur Farbe und Richtung. Im Spiel kommen echte PBR-Texturen dazu.</p>
+
+  <h3>Schrift und Bedienelemente</h3>
+  <div class="typo">
+    <p class="t-head">Auftrag: Regalbrett</p>
+    <p class="t-body">Fichte, 450 mm lang, Toleranz ± 1 mm. Kunde: Schreinerei Huber.</p>
+    <p class="t-num">450 mm<small>Ziel 450 mm</small></p>
+    <span class="t-btn">✎ Anzeichnen</span>
+    <div class="t-sig"><span style="background:#9BCB7A">✓ passt</span><span style="background:#E8B04A">Strich verlassen</span><span style="background:#E0675A">Zu schnell</span></div>
+    <p class="fontname">Überschrift New York (Serif), Zahlen SF Mono – beides eingebaut · keine externen Schriften</p>
+  </div>
+
+  <h3>Eckdaten</h3>
+  <dl class="eck">
+    <dt>Licht</dt><dd>eine Lampe ca. 2700 K als Lichtinsel, hoher Kontrast, kühles Restlicht</dd>
+    <dt>Kanten</dt><dd>Kanten leben von Glanzlichtern; im Schatten verschwinden Silhouetten</dd>
+    <dt>UI</dt><dd>fast schwarze Glas-Panels, dünne Messinglinien, Ecken 6 pt</dd>
+    <dt>Handy-Kosten</dt><dd>hoch – Lampenschatten (bis 6 Render-Durchgänge), Bloom, Banding im Dunkeln</dd>
+    <dt>Stärke</dt><dd>sehr stimmungsvoll; Dunkelheit kaschiert günstige Hintergrund-Assets</dd>
+    <dt>Schwäche</dt><dd>Millimeter-Skala im Halbdunkel schwer lesbar; teuerste Variante</dd>
+  </dl>
+
+  <div class="frage">Welche Variante gefällt dir? (A/B/C)<small>Antwort einfach in den Chat schreiben, z. B. „A“ oder „B, aber wärmer“.</small></div>
+</section>
+<section>
+  <h2>Vergleich auf einen Blick</h2>
+  <table>
+    <tr><th></th><th>A</th><th>B</th><th>C</th></tr>
+    <tr><td>Warmes, natürliches Licht</td><td>ja</td><td>teils</td><td>künstlich</td></tr>
+    <tr><td>Massband lesbar</td><td>gut</td><td>sehr gut</td><td>schwach</td></tr>
+    <tr><td>Kosten auf dem Handy</td><td>mittel</td><td>niedrig</td><td>hoch</td></tr>
+    <tr><td>Passt zu Feld und See</td><td>gut</td><td>gut</td><td>schwer</td></tr>
+  </table>
+  <h3>Empfehlung: A „Honigwerkstatt“</h3>
+  <p>A erfüllt den Projektwunsch nach warmem, natürlichem Licht, hält Massband und Schnittkante gut lesbar und kostet auf dem iPhone nur einen Echtzeit-Schatten. Die Bedienoberfläche kennst du schon aus den Steuerungs-Mockups. Falls A auf dem echten Gerät zu dunkel wirkt, kommen wir mit denselben Modellen zu B.</p>
+  <div class="antwort"><h2>Welche Variante gefällt dir? (A/B/C)</h2><p>Schreib einfach A, B oder C in den Chat – gern mit einem Satz, was dir gefällt oder fehlt.</p></div>
+</section>
+<footer>
+  <p>Ticket 007 · Konzept · keine externen Schriften, Bilder oder Skripte. Steuerungs-Mockups: <a href="../steuerung/">Konzepte Steuerung A/B</a>.</p>
+</footer>
+</main>
+</body>
+</html>
