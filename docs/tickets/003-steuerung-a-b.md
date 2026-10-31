@@ -3,7 +3,7 @@ id: 003
 titel: Zwei Touch-Steuerungskonzepte (A Hybrid, B First-Person) mit klickbaren HTML-Mockups
 agent: mobile-ux
 meilenstein: Phase 0
-status: open
+status: done
 reifegrad: Konzept
 blocked_by: [001]
 branch: ticket/003-steuerung
@@ -25,21 +25,22 @@ und Mockups, die der Mensch auf seinem iPhone per Link öffnen und antippen kann
 - Darf nicht ändern: `src/`, `index.html`, Projektdokumente, `docs/decisions/`
 
 ## Abnahmekriterien
-- [ ] `steuerung-a-b.md`: pro Konzept Gesten-Tabelle (Geste → Aktion → Feedback ≤ 100 ms),
+- [x] `steuerung-a-b.md`: pro Konzept Gesten-Tabelle (Geste → Aktion → Feedback ≤ 100 ms),
       Kamera-/Moduswechsel, Werkbank-Interaktion (Messen, Anzeichnen, Sägen), Inventar/Aufträge,
       Jagd-Interaktion (nur skizziert), Aufwand (inkl. Figur/Animationen bei Third-Person), Risiken
-- [ ] Empfehlung primäres Spielformat (Quer/Hoch) und Konzept für den Vertical Slice, mit Begründung
-- [ ] Mockups (je eine Seite pro Konzept + `index.html` mit Übersicht): Querformat iPhone (852 × 393 pt),
+- [x] Empfehlung primäres Spielformat (Quer/Hoch) und Konzept für den Vertical Slice, mit Begründung
+- [x] Mockups (je eine Seite pro Konzept + `index.html` mit Übersicht): Querformat iPhone (852 × 393 pt),
       sichtbar beschriftet „KONZEPT – kein Spielscreenshot“; virtueller Stick erscheint am Daumen,
       Umschau-Bereich, Kontext-Buttons, Arbeitsansicht Werkbank mit Säge-Geste, Inventar/Auftrags-Panel;
       Touch-Ziele ≥ 44 pt, Safe-Area-Insets, kein Seiten-Zoom
-- [ ] Mockups reagieren auf Touch mit sichtbarem Feedback (reine DOM-Attrappe, keine 3D-Engine)
-- [ ] Mockups mit Playwright (iPhone-15-Profil quer; lokal `PW_LOCAL_CHROMIUM=1`-Ansatz bzw.
+- [x] Mockups reagieren auf Touch mit sichtbarem Feedback (reine DOM-Attrappe, keine 3D-Engine)
+- [x] Mockups mit Playwright (iPhone-15-Profil quer; lokal `PW_LOCAL_CHROMIUM=1`-Ansatz bzw.
       `executablePath: '/opt/pw-browsers/chromium'`) als PNG gerendert nach
       `public/konzepte/steuerung/screenshots/` (max. 300 kB je Bild)
-- [ ] Liste der Punkte, die nur auf dem echten Gerät prüfbar sind (Gerät)
+- [x] Liste der Punkte, die nur auf dem echten Gerät prüfbar sind (Gerät)
 
 ## Nicht Teil dieses Tickets
 Implementierung im Spiel, PWA-Manifest, 3D-Szene.
 
 ## Protokoll
+- 2026-10-31 mobile-ux: Konzept A/B, 2 Mockups + Übersicht, 6 Screenshots; 25/25 Prüfungen in Chromium-Emulation (WebKit hier nicht verfügbar). Empfehlung: Querformat primär, Konzept B für den Vertical Slice. Director: abgenommen; ADR 'nur Querformat im VS' folgt mit PHASE0_ERGEBNIS. Entscheid: `public/konzepte/` aus ESLint ausgenommen (Wegwerf-Mockups, kein Produktivcode).
