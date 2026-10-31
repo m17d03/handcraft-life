@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f1a15" />
+    <title>Steuerungskonzepte A/B · KONZEPT · Handcraft Life</title>
+    <style>
+      :root { color-scheme: dark; --bg: #1f1a15; --fg: #f3e9dc; --accent: #d9a35b; --muted: #c9b8a5;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-text-size-adjust: 100%; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: radial-gradient(circle at 50% 0%, #3a2e22, var(--bg) 60%) fixed; color: var(--fg); font-size: 16px; line-height: 1.45;
+        padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+      main { max-width: 860px; margin: 0 auto; }
+      .tag { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .08em; color: #1f1a15; background: var(--accent); padding: 3px 10px; border-radius: 6px; }
+      h1 { font-size: 26px; margin: 10px 0 4px; }
+      h2 { font-size: 20px; margin: 0 0 6px; }
+      p { margin: 6px 0; }
+      .muted { color: var(--muted); }
+      .hint { border: 1.5px solid var(--accent); border-radius: 14px; padding: 10px 14px; margin: 14px 0; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 14px 0; }
+      .card { background: rgb(0 0 0 / 28%); border: 1.5px solid rgb(217 163 91 / 45%); border-radius: 18px; padding: 12px; }
+      .card img { width: 100%; height: auto; border-radius: 10px; display: block; margin: 8px 0; aspect-ratio: 852 / 393; background: #2a1d13; }
+      .open { display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: var(--accent); color: #1f1a15;
+        font-weight: 700; text-decoration: none; font-size: 17px; margin-top: 8px; }
+      .rec { font-size: 13px; font-weight: 700; color: #1f1a15; background: #8fd18b; padding: 2px 8px; border-radius: 6px; margin-left: 6px; vertical-align: middle; }
+      table { border-collapse: collapse; width: 100%; font-size: 15px; }
+      td, th { text-align: left; padding: 6px 6px; border-top: 1px solid rgb(217 163 91 / 25%); vertical-align: top; }
+      th { color: var(--accent); }
+      .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+      .shots figure { margin: 0; }
+      .shots img { width: 100%; height: auto; border-radius: 8px; display: block; }
+      figcaption { font-size: 13px; color: var(--muted); }
+      a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="tag">KONZEPT – kein Spielscreenshot</span>
+      <h1>Handcraft Life · Steuerung A oder B?</h1>
+      <p class="muted">Zwei antippbare Attrappen der Touch-Steuerung (Ticket 003). Keine 3D-Grafik, nur Bedienung zum Ausprobieren.</p>
+
+      <div class="hint">
+        <b>So testest du:</b> 1. Konzept öffnen · 2. iPhone <b>quer</b> halten · 3. Links ziehen = gehen, rechts ziehen = umsehen ·
+        4. Zur Werkbank gehen und „Werkbank benutzen“ tippen · 5. Massband ziehen, anzeichnen, sägen (rechts auf und ab wischen, links festhalten).
+        Das <b>?</b> oben rechts zeigt alle Gesten.
+      </div>
+
+      <div class="cards">
+        <section class="card">
+          <h2>Konzept A – Hybrid</h2>
+          <p class="muted">Gehen mit sichtbarer Figur von hinten (Third-Person). An der Werkbank wechselt die Kamera automatisch in die Ich-Sicht.</p>
+          <img src="screenshots/a-erkunden.png" alt="Konzept A: Erkunden mit Figur und Stick (KONZEPT)" loading="lazy" />
+          <a class="open" href="a-hybrid.html">Konzept A öffnen</a>
+        </section>
+        <section class="card">
+          <h2>Konzept B – Ich-Sicht <span class="rec">Empfehlung Vertical Slice</span></h2>
+          <p class="muted">Durchgehend aus den eigenen Augen. Fadenkreuz in der Mitte wählt Objekte; Werkbank zoomt in eine feste Arbeitsansicht.</p>
+          <img src="screenshots/b-erkunden.png" alt="Konzept B: Erkunden in Ich-Sicht (KONZEPT)" loading="lazy" />
+          <a class="open" href="b-ich-sicht.html">Konzept B öffnen</a>
+        </section>
+      </div>
+
+      <h2>Legende</h2>
+      <table>
+        <tr><th>Geste</th><th>Was passiert</th></tr>
+        <tr><td>Linke Hälfte ziehen</td><td>Gehen – ein Stick erscheint dort, wo der Daumen aufsetzt</td></tr>
+        <tr><td>Rechte Hälfte ziehen</td><td>Umsehen (A: Kamera kreist um die Figur)</td></tr>
+        <tr><td>Zwei Finger rechts</td><td>A: Kameraabstand · B: genau hinsehen</td></tr>
+        <tr><td>Objekt antippen / halten</td><td>Auswählen / nach 0,3 s Kontextmenü (Ring zeigt den Fortschritt)</td></tr>
+        <tr><td>Grosse runde Taste rechts</td><td>Aktion zum markierten Objekt, z. B. „Werkbank benutzen“</td></tr>
+        <tr><td>Werkbank</td><td>Massbandgriff ziehen (Lupe zeigt mm, ±1 mm feinstellen) → Anzeichnen → rechts auf/ab wischen = sägen, links „festhalten“</td></tr>
+        <tr><td>Tasche oben links</td><td>Inventar und Aufträge</td></tr>
+      </table>
+
+      <h2 style="margin-top:18px">Bilder (Playwright, 852 × 393 pt)</h2>
+      <p class="muted">Alle Bilder: <b>Konzeptbild – kein Spielscreenshot</b>.</p>
+      <div class="shots">
+        <figure><img src="screenshots/a-erkunden.png" alt="" loading="lazy" /><figcaption>A · Erkunden, Stick + Umsehen gleichzeitig</figcaption></figure>
+        <figure><img src="screenshots/a-werkbank-saegen.png" alt="" loading="lazy" /><figcaption>A · Werkbank, Sägen mit beiden Daumen</figcaption></figure>
+        <figure><img src="screenshots/b-erkunden.png" alt="" loading="lazy" /><figcaption>B · Erkunden, Kontextmenü nach Halten</figcaption></figure>
+        <figure><img src="screenshots/b-werkbank-messen.png" alt="" loading="lazy" /><figcaption>B · Werkbank, Messen mit Lupe</figcaption></figure>
+        <figure><img src="screenshots/b-auftraege.png" alt="" loading="lazy" /><figcaption>B · Tasche: Aufträge</figcaption></figure>
+        <figure><img src="screenshots/hochformat-hinweis.png" alt="" loading="lazy" /><figcaption>Hochformat: Hinweis „Bitte quer halten“</figcaption></figure>
+      </div>
+      <p class="muted" style="margin-top:16px">Konzeptpapier: docs/design/steuerung-a-b.md · <a href="../../">‹ Zur Startseite</a></p>
+    </main>
+  </body>
+</html>
