@@ -1,6 +1,5 @@
 # Baut das Spiel bei jedem Push auf main und veröffentlicht es auf GitHub Pages,
 # damit es auf dem iPhone per Link getestet werden kann.
-# Läuft erst, sobald es eine package.json gibt (ab Phase S).
 # Voraussetzung: Repo Settings → Pages → Source: "GitHub Actions".
 # Hinweis: Pages für private Repos braucht GitHub Pro; sonst Repo öffentlich machen.
 name: Deploy to GitHub Pages
@@ -21,7 +20,6 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ hashFiles('package.json') != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
