@@ -3,7 +3,7 @@ id: 004
 titel: Messbare Qualitätskriterien für Performance, Bedienbarkeit und Spielstabilität entwerfen
 agent: qa-performance
 meilenstein: Phase 0
-status: open
+status: done
 reifegrad: Konzept
 blocked_by: [001]
 branch: ticket/004-qualitaet
@@ -25,19 +25,20 @@ wie und womit sie gemessen werden, und welche nur auf dem iPhone prüfbar sind.
 - Darf nicht ändern: alles andere
 
 ## Abnahmekriterien
-- [ ] Kriterien in 4 Gruppen: Performance (fps, Frame-Zeit p95, Draw Calls, Dreiecke, Texturspeicher,
+- [x] Kriterien in 4 Gruppen: Performance (fps, Frame-Zeit p95, Draw Calls, Dreiecke, Texturspeicher,
       Download, Ladezeit), Bedienbarkeit (Touch-Ziele, Feedback-Zeit, Lesbarkeit, Safe Areas,
       Hoch/Quer), Stabilität (Neuladen, App-Wechsel, Speicherstand-Migration, Fehlerfreiheit Konsole),
       Grafikqualität (Referenzbild-Vergleich, Kantenschärfe/AA, Auflösung)
-- [ ] Pro Kriterium: Ziel, harte Grenze, Messmethode (Befehl/Test/Gerät), automatisch oder (Gerät),
+- [x] Pro Kriterium: Ziel, harte Grenze, Messmethode (Befehl/Test/Gerät), automatisch oder (Gerät),
       ab welcher Phase verbindlich
-- [ ] Definition of Done pro Statusstufe (Konzept → Freigegeben) eindeutig
-- [ ] Testpyramide: was Vitest, was Playwright (WebKit/CI vs. Chromium/lokal), was Mensch auf iPhone
-- [ ] Ehrliche Grenzen der Emulation benannt
-- [ ] `playtest-vorlage.md`: max. 10 Fragen, beantwortbar in < 5 Minuten im Chat
-- [ ] Vorschlag für `window.__perf()`-Schnittstelle (Felder, Einheiten) für den Engine-Spike
+- [x] Definition of Done pro Statusstufe (Konzept → Freigegeben) eindeutig
+- [x] Testpyramide: was Vitest, was Playwright (WebKit/CI vs. Chromium/lokal), was Mensch auf iPhone
+- [x] Ehrliche Grenzen der Emulation benannt
+- [x] `playtest-vorlage.md`: max. 10 Fragen, beantwortbar in < 5 Minuten im Chat
+- [x] Vorschlag für `window.__perf()`-Schnittstelle (Felder, Einheiten) für den Engine-Spike
 
 ## Nicht Teil dieses Tickets
 Implementierung von Messcode, Änderungen an Konfiguration.
 
 ## Protokoll
+- 2026-10-31 qa-performance: Entwurf geliefert (33 Kriterien, PerfSnapshot v1, Playtest-Vorlage 10 Fragen). Director: abgenommen; Übernahme in QUALITY_STANDARDS.md mit PHASE0_ERGEBNIS. Offen: Referenz-iPhone festlegen (Mensch); Folge-Ticket CI-Schritt tests/perf/.
