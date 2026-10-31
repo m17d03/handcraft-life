@@ -3,7 +3,7 @@ id: 006
 titel: Minimalen, versionierten Modulvertrag und Speicherformat entwerfen (ADR-Vorschlag)
 agent: engine-engineer
 meilenstein: Phase 0
-status: open
+status: done
 reifegrad: Konzept
 blocked_by: [002]
 branch: ticket/006-modulvertrag
@@ -25,17 +25,18 @@ Plug-in-System.
 - Darf nicht ändern: Code, Projektdokumente, `docs/decisions/0001-*`
 
 ## Abnahmekriterien
-- [ ] TypeScript-Typskizze `ModuleManifest`, Kern-Schnittstellen (Werkstück, Werkzeug, Arbeitsschritt,
+- [x] TypeScript-Typskizze `ModuleManifest`, Kern-Schnittstellen (Werkstück, Werkzeug, Arbeitsschritt,
       Auftrag, Inventar) – nur Typen im Dokument, kein Code im Repo
-- [ ] Ehrliche Tabelle: welche der Beispiel-Erweiterungen aus §9 (Fishing Base, Rivers & Lures,
+- [x] Ehrliche Tabelle: welche der Beispiel-Erweiterungen aus §9 (Fishing Base, Rivers & Lures,
       3D Printing Base/Advanced, Hunting Base, Hunting Dog & Waterfowl) rein datengetrieben möglich sind
       und welche neuen Code brauchen
-- [ ] Speicherformat: Aufbau (Kern + Abschnitt pro Modul), Versionierung, Migrationskette, Verhalten bei
+- [x] Speicherformat: Aufbau (Kern + Abschnitt pro Modul), Versionierung, Migrationskette, Verhalten bei
       fehlendem/unbekanntem Modul, Fixture-Test-Strategie
-- [ ] Zwei ADR-Vorschläge im Format des Skills `architektur-entscheid` mit Optionen und Rückweg
-- [ ] `EXPANSION_REGISTRY.md`-Entwurf als Abschnitt im Dokument (ID, Version, Abhängigkeiten, Status)
+- [x] Zwei ADR-Vorschläge im Format des Skills `architektur-entscheid` mit Optionen und Rückweg
+- [x] `EXPANSION_REGISTRY.md`-Entwurf als Abschnitt im Dokument (ID, Version, Abhängigkeiten, Status)
 
 ## Nicht Teil dieses Tickets
 Implementierung (folgt in Phase 1).
 
 ## Protokoll
+- 2026-10-31 engine-engineer: modul-vertrag.md, ADR 0002/0003 (vorgeschlagen). Director: abgenommen; Annahme der ADRs mit der Phase-0-Freigabe. Folgen: Skill `modul-vertrag` anpassen (Felder art, mechanics, assets, tests).
