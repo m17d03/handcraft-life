@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f1a15" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Konzept B – Ich-Sicht · KONZEPT-Mockup · Handcraft Life</title>
+    <link rel="stylesheet" href="steuerung.css" />
+  </head>
+  <body class="konzept-b">
+    <!-- KONZEPT – kein Spielscreenshot. Reine DOM-Attrappe für Ticket 003. -->
+    <div id="rotate">
+      <div class="phone"></div>
+      <h1>Bitte quer halten</h1>
+      <p>Konzept B – Ich-Sicht ist für das Querformat gebaut (beide Daumen). Drehe das iPhone; bei aktiver Ausrichtungssperre bitte im Kontrollzentrum lösen.</p>
+      <p><a href="./" style="color:var(--accent)">‹ Zur Übersicht</a></p>
+      <p style="font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--accent)">KONZEPT – kein Spielscreenshot</p>
+    </div>
+    <!-- Skript bewusst eingebettet und in a-hybrid.html und b-ich-sicht.html identisch:
+         eine .js-Datei unter public/ wuerde von "npm run lint" (typgeprueftes ESLint) erfasst und scheitern. -->
+    <script>
+// KONZEPT-Mockup Ticket 003 – reine DOM-Attrappe (keine 3D-Engine, kein Spielcode).
+// Gemeinsamer Code fuer Konzept A (Hybrid) und Konzept B (Ich-Sicht).
+// Seite waehlt das Konzept ueber <body class="konzept-a|konzept-b">.
+'use strict';
+
+(() => {
+  const body = document.body;
+  const K = body.classList.contains('konzept-a') ? 'a' : 'b';
+  const params = new URLSearchParams(location.search);
+  if (params.has('notch')) document.documentElement.classList.add('sim-notch');
+
+  const EDGE = 20; // pt Sperrzone am linken/rechten Rand (Safari-Wischgesten)
+  const HOLD_MS = 300;
+  const TAP_MS = 250;
+  const MOVE_TOL = 10;
+  const BEAM_MM = 1000;
+
+  const NAME = K === 'a' ? 'Konzept A – Hybrid (Third-Person + Ich-Sicht)' : 'Konzept B – durchgehend Ich-Sicht';
+
+  // ---------- DOM ----------
+  const app = document.createElement('div');
+  app.innerHTML = `
+  <div id="stage">
+    <div id="world">
+      <div class="win" style="left:640px"></div>
+      <div class="win" style="left:980px"></div>
+      <div id="rack" class="obj" data-obj="rack">
+        <div class="side l"></div><div class="side r"></div>
+        <div class="beam" style="top:22%"></div><div class="beam" style="top:30%"></div>
+        <div class="beam" style="top:58%"></div><div class="beam" style="top:66%"></div>
+        <div class="obj-label">Holzregal</div>
+      </div>
+      <div id="bench" class="obj" data-obj="bench">
+        <div class="top"></div><div class="leg l"></div><div class="leg r"></div><div class="vise"></div><div class="plank"></div>
+        <div class="obj-label">Werkbank</div>
+      </div>
+      <div id="door" class="obj" data-obj="door"><div class="obj-label">Tür nach draussen</div></div>
+    </div>
+    <div id="figure"><div class="head"></div><div class="torso"></div><div class="leg l"></div><div class="leg r"></div></div>
+    <div id="reticle"></div>
+    <div id="input">
+      <div class="zone-hint l" id="hint-l">Links ziehen: gehen</div>
+      <div class="zone-hint r" id="hint-r">Rechts ziehen: umsehen · Objekt halten: Menü</div>
+    </div>
+    <div class="hud tl">
+      <button id="bag-btn" aria-label="Tasche und Aufträge"><span class="icon">▤</span> Tasche</button>
+    </div>
+    <div class="hud tc"><span class="konzept-tag">KONZEPT – kein Spielscreenshot</span><span class="konzept-name">${NAME}</span></div>
+    <div class="hud tr">
+      <button class="help-btn" aria-label="Hilfe">?</button>
+      <button class="pause-btn" aria-label="Pause"><span class="icon">❚❚</span></button>
+    </div>
+    <button id="ctx-btn" hidden></button>
+    <div id="carry" hidden><span id="carry-txt"></span><button id="drop-btn">Ablegen</button></div>
+    <div id="ctx-menu" hidden></div>
+  </div>
+
+  <div id="panel" aria-hidden="true">
+    <div class="tabs">
+      <button data-tab="inv" aria-selected="true">Inventar</button>
+      <button data-tab="ord" aria-selected="false">Aufträge</button>
+      <button class="close" aria-label="Schliessen">✕ Schliessen</button>
+    </div>
+    <div class="body" id="panel-body"></div>
+  </div>
+
+  <div id="work">
+    <div class="surface"></div>
+    <div class="hud tl"><button id="back-btn">‹ Zurück</button></div>
+    <div class="hud tc">
+      <span class="konzept-tag">KONZEPT – kein Spielscreenshot</span>
+      <div id="steps"><span data-s="0">1 Messen</span><span data-s="1">2 Anzeichnen</span><span data-s="2">3 Sägen</span></div>
+      <span id="order-goal"></span>
+    </div>
+    <div class="hud tr">
+      <button class="help-btn" aria-label="Hilfe">?</button>
+      <button class="pause-btn" aria-label="Pause"><span class="icon">❚❚</span></button>
+    </div>
+    <div id="beam">
+      <div class="grain"></div>
+      <div class="offcut"><div class="grain"></div></div>
+      <div id="tape-case"></div>
+      <div id="tape"></div>
+      <div id="mark"></div>
+      <div id="kerf"></div>
+      <div id="tape-handle" aria-label="Massband ziehen"></div>
+    </div>
+    <div id="readout"></div>
+    <div id="loupe"><div class="ruler"></div><div class="needle"></div><div class="val"></div></div>
+    <div id="saw"><div class="blade"></div><div class="grip"></div></div>
+    <div id="saw-pad"><div class="lbl">↕ auf und ab wischen = sägen<br>↔ seitlich = gegensteuern</div></div>
+    <button id="hold-btn">Balken<br>festhalten</button>
+    <div id="saw-meter">
+      <div class="r"><span>Tiefe</span><div class="bar"><i></i></div></div>
+      <div class="r"><span>Strich</span><div class="drift"><i></i></div></div>
+      <div id="saw-warn"></div>
+    </div>
+    <div class="work-bar l" id="nudge-bar">
+      <button id="minus-btn" aria-label="1 mm kürzer">−1 mm</button>
+      <button id="plus-btn" aria-label="1 mm länger">+1 mm</button>
+    </div>
+    <div class="work-bar r" id="mark-bar"><button id="mark-btn" class="primary">✎ Anzeichnen</button></div>
+    <div id="result">
+      <h2>Brett gesägt</h2>
+      <p class="q" id="res-q"></p>
+      <p id="res-len"></p>
+      <p id="res-drift"></p>
+      <p style="color:var(--muted)">Qualitätsstufen sind Platzhalter bis Ticket 002 (Säge-Mechanik).</p>
+      <div class="row"><button id="again-btn">Nochmal</button><button id="leave-btn">Zur Werkstatt</button></div>
+    </div>
+  </div>
+
+  <div class="cam-label" id="cam-label"></div>
+  <div class="toast" id="toast"></div>
+  <div id="legend"><div class="card">
+    <h2>${NAME} – so geht's</h2>
+    <table id="legend-table"></table>
+    <div class="row"><button id="legend-close">Verstanden</button></div>
+  </div></div>`;
+  body.append(...app.childNodes);
+
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+
+  // ---------- Hilfen ----------
+  const safeProbe = document.createElement('div');
+  safeProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:var(--sat) var(--sar) var(--sab) var(--sal)';
+  body.append(safeProbe);
+  const safe = () => {
+    const cs = getComputedStyle(safeProbe);
+    return { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0 };
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  let toastTimer = 0;
+  function toast(msg, ms = 1600) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+  }
+  let camTimer = 0;
+  function camLabel(msg, ms = 700) {
+    const c = $('#cam-label');
+    c.textContent = msg;
+    c.classList.add('show');
+    clearTimeout(camTimer);
+    camTimer = setTimeout(() => c.classList.remove('show'), ms);
+  }
+
+  // Sofortiges Druck-Feedback fuer alle Buttons (<= 100 ms, unabhaengig von :active)
+  document.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('button');
+    if (b) b.classList.add('pressed');
+  });
+  const unpress = () => $$('button.pressed').forEach((b) => { if (b.id !== 'hold-btn') b.classList.remove('pressed'); });
+  document.addEventListener('pointerup', unpress);
+  document.addEventListener('pointercancel', unpress);
+
+  // Seiten-Zoom / Doppeltipp-Zoom / Gummiband-Scrollen unterbinden
+  ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach((n) =>
+    document.addEventListener(n, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener('touchmove', (e) => {
+    if (!e.target.closest('#panel-body, #legend .card')) e.preventDefault();
+  }, { passive: false });
+
+  // ---------- Erkunden ----------
+  const world = $('#world');
+  const figure = $('#figure');
+  const cam = { x: 0, y: 0, zoom: 1, dist: 1 };
+  let stick = null; // {id, x0, y0, dx, dy, el}
+  const looks = new Map(); // id -> {x, y, x0, y0, t0, moved, el, holdEl, holdTimer}
+  let pinchD = 0;
+  let manualTarget = null;
+  let currentTarget = null;
+  let carrying = null;
+  let mode = 'explore';
+
+  const OBJ = {
+    bench: { name: 'Werkbank', ctx: 'Werkbank\nbenutzen', icon: 'saw',
+      menu: [['Benutzen', () => enterWork()], ['Ansehen', () => inspect('bench')]] },
+    rack: { name: 'Holzregal', ctx: 'Balken\nnehmen', icon: 'wood',
+      menu: [['Balken nehmen', () => take()], ['Ansehen', () => inspect('rack')]] },
+    door: { name: 'Tür', ctx: 'Hinaus-\ngehen', icon: 'door',
+      menu: [['Hinausgehen', () => toast('Draussen: kommt mit dem Outdoor-Modul')], ['Ansehen', () => inspect('door')]] },
+  };
+  const INSPECT = {
+    bench: 'Werkbank: Hobelbank mit Vorderzange',
+    rack: 'Holzregal: 3 Fichtenbalken, 1000 mm',
+    door: 'Tür: führt zu Hof und See (Outdoor-Modul)',
+  };
+
+  function applyCam() {
+    const W = innerWidth;
+    cam.x = clamp(cam.x, -620, 620);
+    cam.y = clamp(cam.y, -40, 40);
+    cam.zoom = clamp(cam.zoom, 0.8, 1.9);
+    const oy = innerHeight * 0.55 - cam.y;
+    world.style.transformOrigin = `${950 - cam.x}px ${oy}px`;
+    world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom * (K === 'b' ? cam.dist : 1)})`;
+    if (K === 'a') figure.style.transform = `scale(${1 / cam.dist})`;
+    void W;
+  }
+
+  function probePoint() {
+    // A: vor der Figur (Naehe); B: Bildmitte (Fadenkreuz)
+    return K === 'a' ? [innerWidth / 2, innerHeight * 0.48] : [innerWidth / 2, innerHeight * 0.52];
+  }
+  function objAt(x, y) {
+    for (const el of document.elementsFromPoint(x, y)) {
+      if (el.closest('#input, .hud, button')) continue;
+      const o = el.closest('[data-obj]');
+      if (o) return o.dataset.obj;
+    }
+    return null;
+  }
+  function objAtTouch(x, y) {
+    const prev = $('#input').style.pointerEvents;
+    $('#input').style.pointerEvents = 'none';
+    const o = objAt(x, y);
+    $('#input').style.pointerEvents = prev;
+    return o;
+  }
+
+  function setTarget(id) {
+    if (id === currentTarget) return;
+    currentTarget = id;
+    $$('.obj').forEach((o) => o.classList.toggle('target', o.dataset.obj === id));
+    $('#reticle').classList.toggle('on', !!id);
+    const b = $('#ctx-btn');
+    if (id) {
+      b.innerHTML = OBJ[id].ctx.replace('\n', '<br>');
+      b.hidden = false;
+    } else b.hidden = true;
+  }
+
+  function updateTarget() {
+    if (manualTarget) return setTarget(manualTarget);
+    const [px, py] = probePoint();
+    const prev = $('#input').style.pointerEvents;
+    $('#input').style.pointerEvents = 'none';
+    let id = objAt(px, py);
+    if (!id && K === 'a') id = objAt(px - 60, py) || objAt(px + 60, py);
+    $('#input').style.pointerEvents = prev;
+    // A: nur "in Reichweite", wenn nah genug herangegangen
+    if (K === 'a' && cam.zoom < 1.15) id = null;
+    setTarget(id);
+  }
+
+  function mkEl(cls, x, y) {
+    const el = document.createElement('div');
+    el.className = cls;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    $('#stage').append(el);
+    return el;
+  }
+
+  const input = $('#input');
+  input.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (mode !== 'explore') return;
+    const s = safe();
+    const W = innerWidth;
+    if (e.clientX < s.l + EDGE || e.clientX > W - s.r - EDGE) return; // Randzone: Safari gehoert sie
+    closeMenu();
+    input.setPointerCapture(e.pointerId);
+    const left = e.clientX < W / 2;
+    if (left && !stick) {
+      stick = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, el: mkEl('stick', e.clientX, e.clientY) };
+      stick.el.innerHTML = '<div class="knob"></div>';
+      $('#hint-l').classList.add('used');
+      figure.classList.add('walking');
+      return;
+    }
+    if (!left && looks.size < 2) {
+      const p = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false,
+        el: mkEl('dot', e.clientX, e.clientY), holdEl: null, holdTimer: 0 };
+      const obj = objAtTouch(e.clientX, e.clientY);
+      if (obj && looks.size === 0) {
+        // Halten 300 ms -> Kontextmenue; Ring zeigt sofort, dass Halten etwas bewirkt
+        p.holdEl = mkEl('hold-ring', e.clientX, e.clientY);
+        const t0 = performance.now();
+        const tick = () => {
+          if (!p.holdEl) return;
+          const k = Math.min(1, (performance.now() - t0) / HOLD_MS);
+          p.holdEl.style.setProperty('--p', k * 100 + '%');
+          if (k < 1) requestAnimationFrame(tick);
+        };
+        tick();
+        p.holdTimer = setTimeout(() => {
+          if (p.moved) return;
+          p.holdEl?.remove(); p.holdEl = null;
+          p.menuOpened = true;
+          openMenu(obj, p.x, p.y);
+        }, HOLD_MS);
+      }
+      looks.set(e.pointerId, p);
+      if (looks.size === 2) {
+        const [a, b] = [...looks.values()];
+        pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+        looks.forEach(cancelHold);
+      }
+    }
+  });
+
+  function cancelHold(p) {
+    clearTimeout(p.holdTimer);
+    p.holdEl?.remove();
+    p.holdEl = null;
+  }
+
+  input.addEventListener('pointermove', (e) => {
+    if (stick && e.pointerId === stick.id) {
+      let dx = e.clientX - stick.x0;
+      let dy = e.clientY - stick.y0;
+      const d = Math.hypot(dx, dy);
+      const R = 50;
+      if (d > R) { dx = (dx / d) * R; dy = (dy / d) * R; }
+      stick.dx = dx / R; stick.dy = dy / R;
+      stick.el.firstChild.style.transform = `translate(${dx}px, ${dy}px)`;
+      return;
+    }
+    const p = looks.get(e.pointerId);
+    if (!p) return;
+    const ddx = e.clientX - p.x;
+    const ddy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    p.el.style.left = p.x + 'px'; p.el.style.top = p.y + 'px';
+    if (!p.moved && Math.hypot(p.x - p.x0, p.y - p.y0) > MOVE_TOL) {
+      p.moved = true;
+      cancelHold(p);
+      $('#hint-r').classList.add('used');
+      manualTarget = null;
+    }
+    if (looks.size === 2) {
+      const [a, b] = [...looks.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchD) {
+        cam.dist = clamp(cam.dist * (d / pinchD), 0.75, 1.5);
+        camLabel(K === 'a' ? `Kameraabstand ${Math.round(100 / cam.dist)} %` : `Genau hinsehen ${Math.round(cam.dist * 100)} %`, 500);
+      }
+      pinchD = d;
+      applyCam();
+      return;
+    }
+    if (p.moved) {
+      cam.x += ddx * 1.4;
+      cam.y += ddy * 0.5;
+      applyCam();
+    }
+  });
+
+  function endPointer(e) {
+    if (stick && e.pointerId === stick.id) {
+      stick.el.remove();
+      stick = null;
+      figure.classList.remove('walking');
+      return;
+    }
+    const p = looks.get(e.pointerId);
+    if (!p) return;
+    cancelHold(p);
+    p.el.remove();
+    looks.delete(e.pointerId);
+    pinchD = 0;
+    if (e.type === 'pointerup' && !p.moved && !p.menuOpened && performance.now() - p.t0 < TAP_MS) {
+      const obj = objAtTouch(p.x, p.y);
+      manualTarget = obj;
+      if (obj) toast(`${OBJ[obj].name} ausgewählt`, 900);
+      updateTarget();
+    }
+  }
+  input.addEventListener('pointerup', endPointer);
+  input.addEventListener('pointercancel', endPointer);
+
+  let lastT = performance.now();
+  function loop(t) {
+    const dt = Math.min(50, t - lastT) / 16.7;
+    lastT = t;
+    if (mode === 'explore') {
+      if (stick && (stick.dx || stick.dy)) {
+        cam.x -= stick.dx * 6 * dt;
+        cam.zoom *= 1 - stick.dy * 0.012 * dt;
+        if (K === 'a') figure.style.rotate = `${stick.dx * 14}deg`;
+        manualTarget = null;
+        applyCam();
+      } else if (K === 'a') figure.style.rotate = '0deg';
+      updateTarget();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // Kontextmenue
+  function openMenu(obj, x, y) {
+    const m = $('#ctx-menu');
+    m.innerHTML = `<div class="title">${OBJ[obj].name}</div>`;
+    OBJ[obj].menu.forEach(([label, fn]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.addEventListener('click', () => { closeMenu(); fn(); });
+      m.append(b);
+    });
+    m.hidden = false;
+    const r = m.getBoundingClientRect();
+    m.style.left = clamp(x - r.width - 24, safe().l + 8, innerWidth - r.width - 8) + 'px';
+    m.style.top = clamp(y - r.height / 2, 8, innerHeight - r.height - 8) + 'px';
+    manualTarget = obj;
+    updateTarget();
+  }
+  function closeMenu() { $('#ctx-menu').hidden = true; }
+
+  function inspect(obj) {
+    const z0 = cam.zoom;
+    cam.zoom = Math.min(1.9, z0 * 1.25);
+    world.style.transition = 'transform 250ms ease-out';
+    applyCam();
+    setTimeout(() => { world.style.transition = ''; }, 260);
+    toast(INSPECT[obj], 2200);
+  }
+  function take() {
+    carrying = 'Fichtenbalken 1000 mm';
+    $('#carry-txt').textContent = `In der Hand: ${carrying}`;
+    $('#carry').hidden = false;
+    inv[0].n = Math.max(0, inv[0].n - 1);
+    toast('Balken aufgenommen');
+  }
+  $('#drop-btn').addEventListener('click', () => {
+    carrying = null;
+    $('#carry').hidden = true;
+    inv[0].n += 1;
+    toast('Balken abgelegt');
+  });
+
+  $('#ctx-btn').addEventListener('click', () => {
+    const id = currentTarget;
+    if (!id) return;
+    if (id === 'bench') enterWork();
+    else if (id === 'rack') take();
+    else OBJ[id].menu[0][1]();
+  });
+
+  // ---------- Tasche / Auftraege ----------
+  const inv = [
+    { name: 'Fichtenbalken 1000 mm', n: 3, icon: 'wood' },
+    { name: 'Massband 3 m', n: 1, icon: 'tape' },
+    { name: 'Bleistift', n: 1, icon: 'pen' },
+    { name: 'Japansäge', n: 1, icon: 'saw' },
+    { name: 'Schleifpapier P120', n: 4, icon: 'paper' },
+  ];
+  const orders = [
+    { id: 'o1', title: 'Regalbrett 450 mm', who: 'Nachbarin Frey', pay: '14 €', need: 'Qualität ab „Gut“', mm: 450 },
+    { id: 'o2', title: 'Schneidebrett 300 mm', who: 'Hofladen', pay: '9 €', need: 'Qualität ab „Ordentlich“', mm: 300 },
+  ];
+  let activeOrder = orders[0];
+  let tab = 'inv';
+  let selSlot = -1;
+  function renderPanel() {
+    $$('#panel .tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+    const pb = $('#panel-body');
+    if (tab === 'inv') {
+      pb.innerHTML = `<div class="grid">${inv.map((it, i) =>
+        `<button class="slot${i === selSlot ? ' sel' : ''}" data-i="${i}"><span class="sw ${it.icon}"></span>${it.name}<span class="q">× ${it.n}</span></button>`).join('')}</div>`;
+      pb.querySelectorAll('.slot').forEach((b) => b.addEventListener('click', () => {
+        selSlot = +b.dataset.i; renderPanel(); toast(inv[selSlot].name, 900);
+      }));
+    } else {
+      pb.innerHTML = orders.map((o) =>
+        `<div class="order${o === activeOrder ? ' active' : ''}"><div class="txt"><b>${o.title}</b><br><span>${o.who} · ${o.pay} · ${o.need}</span></div>
+         <button data-o="${o.id}">${o === activeOrder ? '✓ Aktiv' : 'Annehmen'}</button></div>`).join('');
+      pb.querySelectorAll('[data-o]').forEach((b) => b.addEventListener('click', () => {
+        activeOrder = orders.find((o) => o.id === b.dataset.o); renderPanel(); toast(`Aktiver Auftrag: ${activeOrder.title}`);
+      }));
+    }
+  }
+  function openPanel(open) {
+    $('#panel').classList.toggle('open', open);
+    $('#panel').setAttribute('aria-hidden', String(!open));
+    if (open) renderPanel();
+  }
+  $('#bag-btn').addEventListener('click', () => openPanel(true));
+  $('#panel .close').addEventListener('click', () => openPanel(false));
+  $$('#panel .tabs [data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab; renderPanel(); }));
+
+  // ---------- Legende / Pause ----------
+  const LEGEND = [
+    ['Links ziehen', K === 'a' ? 'Figur geht (Stick erscheint unter dem Daumen)' : 'Gehen (Stick erscheint unter dem Daumen)'],
+    ['Rechts ziehen', K === 'a' ? 'Kamera um die Figur drehen' : 'Umsehen'],
+    ['Zwei Finger rechts', K === 'a' ? 'Kameraabstand (näher/weiter)' : 'Genau hinsehen (Zoom)'],
+    ['Objekt antippen', 'Auswählen – grosse Taste rechts unten führt die Aktion aus'],
+    ['Objekt halten', 'Ring füllt sich, nach 0,3 s Kontextmenü'],
+    [K === 'a' ? 'Nah an Objekt' : 'Fadenkreuz auf Objekt', 'Objekt leuchtet, Aktionstaste erscheint'],
+    ['Werkbank benutzen', K === 'a' ? 'Kamera wechselt automatisch in die Ich-Sicht' : 'Kamera zoomt in die feste Arbeitsansicht'],
+    ['Massband-Griff ziehen', 'Messen, Lupe zeigt Millimeter; ±1 mm zum Feinstellen'],
+    ['Auf/ab wischen (rechts)', 'Sägen; linker Daumen hält den Balken fest'],
+    ['Tasche', 'Inventar und Aufträge'],
+    ['Äusserste Ränder', 'bewusst ohne Funktion (Safari-Wischgesten)'],
+  ];
+  $('#legend-table').innerHTML = LEGEND.map(([g, a]) => `<tr><td>${g}</td><td>${a}</td></tr>`).join('');
+  $$('.help-btn').forEach((b) => b.addEventListener('click', () => $('#legend').classList.add('show')));
+  $('#legend-close').addEventListener('click', () => $('#legend').classList.remove('show'));
+  $$('.pause-btn').forEach((b) => b.addEventListener('click', () => toast('Pause-Menü (im Mockup nur Attrappe)')));
+
+  // ---------- Werkbank ----------
+  const work = $('#work');
+  const beam = $('#beam');
+  const w = { step: 0, mm: 0, mark: null, progress: 0, drift: 0, held: false, done: false };
+
+  function enterWork() {
+    closeMenu();
+    if (carrying) { $('#drop-btn').click(); toast('Balken auf die Werkbank gelegt'); }
+    mode = 'work';
+    stick?.el.remove(); stick = null;
+    looks.forEach((p) => { cancelHold(p); p.el.remove(); }); looks.clear();
+    world.style.transition = 'transform 360ms ease-in';
+    cam.zoom = 1.9;
+    applyCam();
+    if (K === 'a') {
+      figure.style.transition = 'opacity 300ms, transform 300ms';
+      figure.style.opacity = '0';
+      camLabel('Kamera wechselt automatisch: Ich-Sicht', 900);
+    } else camLabel('Arbeitsansicht', 600);
+    setTimeout(() => {
+      world.style.transition = '';
+      work.classList.add('show');
+      resetWork();
+    }, 360);
+  }
+  function exitWork() {
+    work.classList.remove('show');
+    $('#result').classList.remove('show');
+    mode = 'explore';
+    cam.zoom = 1.3;
+    applyCam();
+    if (K === 'a') { figure.style.opacity = '1'; camLabel('Kamera: Third-Person', 700); }
+  }
+  $('#back-btn').addEventListener('click', exitWork);
+  $('#leave-btn').addEventListener('click', exitWork);
+  $('#again-btn').addEventListener('click', resetWork);
+
+  const pxPerMm = () => beam.clientWidth / BEAM_MM;
+
+  function resetWork() {
+    Object.assign(w, { step: 0, mm: 0, mark: null, progress: 0, drift: 0, held: false, done: false });
+    beam.classList.remove('cut');
+    $('#result').classList.remove('show');
+    $('#mark').style.display = 'none';
+    $('#kerf').style.height = '0';
+    $('#order-goal').textContent = `Auftrag: ${activeOrder.title}`;
+    renderWork();
+  }
+
+  function renderWork() {
+    const ppm = pxPerMm();
+    $$('#steps span').forEach((s) => {
+      const i = +s.dataset.s;
+      s.classList.toggle('on', i === w.step);
+      s.classList.toggle('done', i < w.step);
+    });
+    const sawing = w.step === 2;
+    $('#tape').style.width = (sawing ? 0 : w.mm * ppm) + 'px';
+    $('#tape-handle').style.left = w.mm * ppm + 'px';
+    $('#tape-handle').style.display = sawing ? 'none' : 'block';
+    $('#tape-case').style.display = sawing ? 'none' : 'block';
+    const hit = w.mm === activeOrder.mm;
+    const ro = $('#readout');
+    ro.style.display = sawing ? 'none' : 'block';
+    ro.classList.toggle('hit', hit);
+    ro.innerHTML = `${w.mm} mm<br><small>Ziel ${activeOrder.mm} mm${hit ? " ✓ passt" : ""}</small>`;
+    $('#nudge-bar').style.display = sawing ? 'none' : 'flex';
+    $('#mark-bar').style.display = sawing ? 'none' : 'flex';
+    $('#mark-btn').disabled = w.mm === 0;
+    $('#mark-btn').style.opacity = w.mm === 0 ? '0.5' : '1';
+    if (w.mark != null) {
+      $('#mark').style.display = 'block';
+      $('#mark').style.left = w.mark * ppm + 'px';
+    }
+    $('#beam .offcut').style.left = (w.mark ?? BEAM_MM) * ppm + 'px';
+    ['#saw', '#saw-pad', '#hold-btn', '#saw-meter'].forEach((s) => { $(s).style.display = sawing && !w.done ? 'block' : 'none'; });
+    if (sawing) {
+      const r = beam.getBoundingClientRect();
+      const x = r.left + (w.mark + w.drift) * ppm;
+      const saw = $('#saw');
+      saw.style.left = x + 'px';
+      if (!saw.style.top) saw.style.top = r.top - 60 + 'px';
+      $('#kerf').style.left = (w.mark + w.drift) * ppm + 'px';
+      $('#kerf').style.height = (w.progress / 100) * beam.clientHeight + 'px';
+      $('#saw-meter .bar i').style.width = w.progress + '%';
+      $('#saw-meter .drift i').style.left = clamp(50 + (w.drift / 3) * 50, 2, 98) + '%';
+      saw.classList.toggle('drift-bad', Math.abs(w.drift) > 1.5);
+    }
+  }
+
+  // Massband ziehen + Lupe
+  const handle = $('#tape-handle');
+  const loupe = $('#loupe');
+  const ruler = $('#loupe .ruler');
+  const LPX = 8; // Lupe: 8 pt pro mm
+  ruler.style.width = BEAM_MM * LPX + 132 + 'px';
+  ruler.innerHTML = Array.from({ length: BEAM_MM / 10 + 1 }, (_, i) => `<span style="left:${66 + i * 10 * LPX}px">${i * 10}</span>`).join('');
+  ruler.style.backgroundPosition = '66px 0, 66px 0, 0 0';
+  let drag = null;
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('active');
+    drag = { id: e.pointerId, x0: e.clientX, mm0: w.mm };
+    showLoupe();
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    // Daempfung: langsames Ziehen = feiner (halbe Uebersetzung unter 0,15 pt/ms waere echtes Feintuning; hier linear)
+    w.mm = clamp(Math.round(drag.mm0 + (e.clientX - drag.x0) / pxPerMm()), 0, BEAM_MM);
+    if (w.step === 0 && w.mm > 0) w.step = 0;
+    renderWork();
+    showLoupe();
+  });
+  const endDrag = () => {
+    if (!drag) return;
+    drag = null;
+    handle.classList.remove('active');
+    loupe.style.display = 'none';
+    if (w.mm > 0 && w.step === 0) { w.step = 1; renderWork(); }
+  };
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+  function showLoupe(ms) {
+    const r = beam.getBoundingClientRect();
+    const x = r.left + w.mm * pxPerMm();
+    // Lupe seitlich neben dem Daumen auf Massband-Hoehe, damit sie weder vom Finger noch von der Kopfzeile verdeckt wird
+    const top = Math.max(4, r.top - 50 - 66);
+    const left = x - 110 < 80 ? x + 110 : x - 110;
+    loupe.style.display = 'block';
+    loupe.style.left = left + 'px';
+    loupe.style.top = top + 'px';
+    ruler.style.transform = `translateX(${-w.mm * LPX}px)`;
+    $('#loupe .val').textContent = `${w.mm} mm`;
+    if (ms) { clearTimeout(showLoupe.t); showLoupe.t = setTimeout(() => { if (!drag) loupe.style.display = 'none'; }, ms); }
+  }
+  const nudge = (d) => {
+    w.mm = clamp(w.mm + d, 0, BEAM_MM);
+    if (w.step === 0) w.step = 1;
+    renderWork();
+    showLoupe(700);
+  };
+  $('#minus-btn').addEventListener('click', () => nudge(-1));
+  $('#plus-btn').addEventListener('click', () => nudge(1));
+  $('#mark-btn').addEventListener('click', () => {
+    if (!w.mm) return;
+    w.mark = w.mm;
+    w.step = 2;
+    $('#saw').style.top = '';
+    renderWork();
+    toast(`Angezeichnet bei ${w.mark} mm – jetzt sägen`);
+  });
+
+  // Festhalten (linker Daumen)
+  const holdBtn = $('#hold-btn');
+  holdBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); holdBtn.setPointerCapture(e.pointerId); w.held = true; holdBtn.classList.add('held'); });
+  const release = () => { w.held = false; holdBtn.classList.remove('held', 'pressed'); };
+  holdBtn.addEventListener('pointerup', release);
+  holdBtn.addEventListener('pointercancel', release);
+
+  // Saegen: auf/ab wischen
+  const pad = $('#saw-pad');
+  let sw = null;
+  pad.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (w.done) return;
+    pad.setPointerCapture(e.pointerId);
+    pad.classList.add('active');
+    sw = { id: e.pointerId, y0: e.clientY, sy: e.clientY, sx: e.clientX, st: performance.now(), dir: 0, lastY: e.clientY };
+  });
+  pad.addEventListener('pointermove', (e) => {
+    if (!sw || e.pointerId !== sw.id || w.done) return;
+    const y = e.clientY;
+    const dy = y - sw.lastY;
+    sw.lastY = y;
+    const r = beam.getBoundingClientRect();
+    $('#saw').style.top = r.top - 60 + clamp((y - sw.y0) * 0.6, -50, 50) + 'px';
+    if (Math.abs(dy) < 1) return;
+    const dir = Math.sign(dy);
+    if (sw.dir && dir !== sw.dir && Math.abs(y - sw.sy) > 30) {
+      stroke(Math.abs(y - sw.sy), performance.now() - sw.st, e.clientX - sw.sx);
+      if (!sw) return; // Schnitt fertig
+      sw.sy = y; sw.sx = e.clientX; sw.st = performance.now();
+    }
+    sw.dir = dir;
+  });
+  const endSaw = (e) => {
+    if (!sw || e.pointerId !== sw.id) return;
+    if (Math.abs(sw.lastY - sw.sy) > 30) stroke(Math.abs(sw.lastY - sw.sy), performance.now() - sw.st, e.clientX - sw.sx);
+    sw = null;
+    pad.classList.remove('active');
+  };
+  pad.addEventListener('pointerup', endSaw);
+  pad.addEventListener('pointercancel', endSaw);
+
+  function stroke(amp, dt, dx) {
+    const speed = amp / Math.max(dt, 1);
+    const warn = $('#saw-warn');
+    if (speed > 2.2) {
+      warn.textContent = 'Zu schnell – die Säge hakt';
+      return;
+    }
+    warn.textContent = w.held ? '' : 'Balken wackelt – links festhalten';
+    w.progress = Math.min(100, w.progress + (Math.min(amp, 160) / 160) * 8);
+    w.drift += dx * 0.004 + (w.held ? 0 : (Math.random() - 0.5) * 1.2);
+    w.drift = clamp(w.drift, -3, 3);
+    const r = beam.getBoundingClientRect();
+    const x = r.left + (w.mark + w.drift) * pxPerMm();
+    for (let i = 0; i < 5; i++) {
+      const d = document.createElement('div');
+      d.className = 'dust';
+      d.style.left = x + (Math.random() - 0.5) * 10 + 'px';
+      d.style.top = r.bottom - 4 + 'px';
+      d.style.setProperty('--dx', (Math.random() - 0.5) * 40 + 'px');
+      work.append(d);
+      setTimeout(() => d.remove(), 650);
+    }
+    renderWork();
+    if (w.progress >= 100) finish();
+  }
+
+  function finish() {
+    w.done = true;
+    sw = null;
+    pad.classList.remove('active');
+    beam.classList.add('cut');
+    renderWork();
+    const len = Math.round((w.mark + w.drift) * 2) / 2;
+    const dev = Math.abs(len - activeOrder.mm);
+    const q = dev <= 1 ? ['Sehr gut', 'var(--ok)'] : dev <= 2 ? ['Gut', 'var(--ok)'] : dev <= 4 ? ['Ordentlich', 'var(--warn)'] : ['Nacharbeit nötig', 'var(--bad)'];
+    $('#res-q').textContent = `Qualität: ${q[0]}`;
+    $('#res-q').style.color = q[1];
+    $('#res-len').textContent = `Länge ${len.toString().replace('.', ',')} mm · Ziel ${activeOrder.mm} mm · Abweichung ${dev.toString().replace('.', ',')} mm`;
+    $('#res-drift').textContent = `Schnitt ${Math.abs(w.drift) <= 1 ? 'gerade' : 'schräg'} (${w.drift >= 0 ? '+' : ''}${w.drift.toFixed(1).replace('.', ',')} mm am Strich)`;
+    setTimeout(() => $('#result').classList.add('show'), 520);
+  }
+
+  addEventListener('resize', () => { applyCam(); if (mode === 'work') renderWork(); });
+
+  // Testhaken fuer Screenshots (nur Mockup)
+  window.__mock = { enterWork, openPanel, w, renderWork, finish, setTab: (t) => { tab = t; renderPanel(); }, openMenu };
+
+  applyCam();
+  requestAnimationFrame(loop);
+})();
+    </script>
+  </body>
+</html>
