@@ -41,3 +41,13 @@ describe('isDebugEnabled', () => {
     expect(isDebugEnabled(search)).toBe(expected);
   });
 });
+
+describe('FpsMeter Hänger', () => {
+  it('meldet Hänger, die länger als das Fenster sind', () => {
+    const m = new FpsMeter(1000);
+    for (let i = 0; i <= 60; i++) m.tick(i * 16);
+    m.tick(960 + 1500);
+    m.tick(960 + 1516);
+    expect(m.worstFrameMs).toBe(1500);
+  });
+});

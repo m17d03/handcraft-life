@@ -31,3 +31,13 @@ test('kein horizontales Scrollen auf dem iPhone', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test('?debug=1 meldet Ladefehler von Ressourcen', async ({ page }) => {
+  await page.goto('./?debug=1');
+  await page.evaluate(() => {
+    const img = document.createElement('img');
+    img.src = 'gibt-es-nicht.png';
+    document.body.append(img);
+  });
+  await expect(page.locator('#debug-overlay .debug-errors')).toContainText('Ladefehler: gibt-es-nicht.png');
+});

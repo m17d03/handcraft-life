@@ -18,14 +18,15 @@ export function installDebugOverlay(root: HTMLElement = document.body): HTMLElem
   root.append(box);
 
   const meter = new FpsMeter();
-  const info = `${String(window.innerWidth)}×${String(window.innerHeight)} @${String(window.devicePixelRatio)}x`;
+  const info = (): string =>
+    `${String(window.innerWidth)}×${String(window.innerHeight)} @${String(window.devicePixelRatio)}x`;
   let lastRender = 0;
 
   const loop = (now: number): void => {
     meter.tick(now);
     if (now - lastRender > 250) {
       lastRender = now;
-      stats.textContent = `fps ${meter.fps.toFixed(0)} · max ${meter.worstFrameMs.toFixed(0)} ms · ${info}`;
+      stats.textContent = `fps ${meter.fps.toFixed(0)} · max ${meter.worstFrameMs.toFixed(0)} ms · ${info()}`;
     }
     requestAnimationFrame(loop);
   };
@@ -39,10 +40,21 @@ export function installDebugOverlay(root: HTMLElement = document.body): HTMLElem
     box.classList.add('has-errors');
   };
 
-  window.addEventListener('error', (event) => {
-    const where = event.filename ? ` (${event.filename.split('/').pop() ?? ''}:${String(event.lineno)})` : '';
-    addError(`${event.message}${where}`);
-  });
+  // capture: true, damit auch Ladefehler von Ressourcen (Bilder, Skripte) ankommen.
+  window.addEventListener(
+    'error',
+    (event: Event) => {
+      if (!(event instanceof ErrorEvent)) {
+        const target = event.target;
+        const src = target instanceof HTMLImageElement || target instanceof HTMLScriptElement ? target.src : '';
+        addError(`Ladefehler: ${src.split('/').pop() ?? 'Ressource'}`);
+        return;
+      }
+      const where = event.filename ? ` (${event.filename.split('/').pop() ?? ''}:${String(event.lineno)})` : '';
+      addError(`${event.message}${where}`);
+    },
+    true,
+  );
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
     const reason: unknown = event.reason;
     addError(`Promise: ${reason instanceof Error ? reason.message : String(reason)}`);
