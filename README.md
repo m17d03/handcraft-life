@@ -16,6 +16,7 @@ Claude Code und mehreren spezialisierten Agenten.
 | `npm run check` | Typecheck + Lint + Unit-Tests |
 | `npm run test:e2e` | Playwright, WebKit mit iPhone-15-Profil (hoch + quer) |
 | `PW_LOCAL_CHROMIUM=1 npm run test:e2e` | Notlösung ohne WebKit (Cloud-Sitzung), nur Chromium |
+| `PW_PORT=4xxx …` | eigener Port je Worktree (parallele Agenten) |
 | `npm run build` | Produktions-Build nach `dist/` |
 
 CI (`.github/workflows/ci.yml`) führt alle Prüfungen inkl. WebKit bei jedem Push aus;
