@@ -133,6 +133,11 @@ export interface AuftragVorlage {
   start: Record<string, number>;
   /** Schlüssel = Messwert (z. B. `delta_l_mm`), Wert = erlaubte Abweichung. */
   toleranz: Record<string, number>;
+  /**
+   * Einstieg (holz-brett-zuschnitt §5, Lernkurve „geführt“): die ersten `auftraege` Aufträge eines Spielstands
+   * bekommen diese grosszügigere Toleranz.
+   */
+  einstieg?: { auftraege: number; toleranz: Record<string, number> };
   basispreis: { material_faktor: number; je_schritt: number };
 }
 

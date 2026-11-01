@@ -15,7 +15,7 @@ function abgelehnt(z: Spielzustand, aktion: Aktion) {
 }
 
 describe('Neuer Spielstand', () => {
-  it('Startgeld 40 G, Grundwerkzeuge, erster Auftrag Regalbrett 600 mm ± 1 mm zu 14 G', () => {
+  it('Startgeld 40 G, Grundwerkzeuge, erster Auftrag Regalbrett 600 mm ± 2 mm (Einstieg) zu 14 G', () => {
     const z = neuerSpielzustand(katalog, 1);
     expect(z.inventar.geld).toBe(40);
     expect(z.inventar.schulden).toBe(0);
@@ -25,7 +25,7 @@ describe('Neuer Spielstand', () => {
         id: 'af_1',
         vorlageId: 'holz.auftrag.regalbrett',
         soll: { laenge_mm: 600 },
-        toleranz: { delta_l_mm: 1 },
+        toleranz: { delta_l_mm: 2 },
         basispreis: 14,
         kundeId: 'laufkunde',
         status: 'angeboten',
@@ -202,7 +202,13 @@ describe('Ergebnis, Ausschuss, Abliefern', () => {
     // B: 2,45° schief (Q 76); C: 2 mm zu kurz (Toleranz); D: 3 mm zu kurz + 1,05° schief + grosser Ausriss (Q 49)
     const schief = [...zuege(7, 1), ...zuege(1)];
     expect(zuschnitt(bereit(), { zuege: schief }).zustand.arbeit?.ergebnis).toMatchObject({ preis: 14, qualitaet: { stufe: 'B' } });
-    expect(zuschnitt(bereit(), { mm: 598 }).zustand.arbeit?.ergebnis).toMatchObject({ preis: 10, qualitaet: { stufe: 'C' } });
+    // Toleranz nach dem Einstieg (± 1 mm)
+    const normal = bereit();
+    const a0 = normal.auftraege[0];
+    if (a0) a0.toleranz = { delta_l_mm: 1 };
+    expect(zuschnitt(normal, { mm: 598 }).zustand.arbeit?.ergebnis).toMatchObject({ preis: 10, qualitaet: { stufe: 'C' } });
+    // Einstieg (± 2 mm): 2 mm zu kurz wird nicht gekappt
+    expect(zuschnitt(bereit(), { mm: 598 }).zustand.arbeit?.ergebnis?.qualitaet.stufe).not.toBe('C');
     const hastig = [...zuege(3, 1), ...zuege(3), ...zuege(2, 0, 2)];
     expect(zuschnitt(bereit(), { mm: 597, zuege: hastig }).zustand.arbeit?.ergebnis).toMatchObject({
       preis: 6,

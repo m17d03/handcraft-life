@@ -129,7 +129,7 @@ describe('Ablauf Vertical Slice (Ticket 013)', () => {
 
   it('Auftragstext mit Soll, Toleranz und Lohn', () => {
     const z = neuerSpielzustand(katalog, 1);
-    expect(auftragText(z.auftraege[0])).toMatch(/^Regalbrett 600 mm ± 1 · Lohn \d+ G$/);
+    expect(auftragText(z.auftraege[0])).toMatch(/^Regalbrett 600 mm ± 2 · Lohn \d+ G$/);
     expect(auftragText(undefined)).toBeNull();
   });
 });
