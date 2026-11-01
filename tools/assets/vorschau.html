@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Asset-Vorschau</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1F1A15; overflow: hidden; }
+  canvas { display: block; }
+  #marke { position: fixed; left: 12px; top: 10px; font: 600 14px/1.3 system-ui, sans-serif; color: #F3E9DC;
+    background: rgba(31, 26, 21, 0.88); border: 1.5px solid #D9A35B; border-radius: 10px; padding: 6px 10px; }
+  #marke small { display: block; font-weight: 400; color: #D9A35B; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js", "three/addons/": "/node_modules/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="marke">Asset-Vorschau – kein Spielscreenshot<small id="titel"></small></div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const q = new URLSearchParams(location.search);
+const ansicht = q.get('ansicht') ?? 'saege';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const szene = new THREE.Scene();
+szene.background = new THREE.Color('#2a231c');
+const pmrem = new THREE.PMREMGenerator(renderer);
+szene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+szene.environmentIntensity = 0.45;
+// Stil A: tiefe warme Sonne, kühlere Schattenseite
+const sonne = new THREE.DirectionalLight('#ffd3a1', 2.6);
+sonne.castShadow = true;
+Object.assign(sonne.shadow.camera, { left: -0.6, right: 0.6, top: 0.6, bottom: -0.6, near: 0.1, far: 6 });
+sonne.shadow.mapSize.set(2048, 2048);
+sonne.shadow.bias = -0.0004;
+szene.add(sonne, sonne.target);
+szene.add(new THREE.HemisphereLight('#c9d6e8', '#3b2a1c', 0.35));
+
+const kamera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.005, 50);
+const ktx2 = new KTX2Loader().setTranscoderPath('/node_modules/three/examples/jsm/libs/basis/').detectSupport(renderer);
+const gltf = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+const laden = (n) => gltf.loadAsync(`/public/assets/modelle/${n}.glb`).then((g) => g.scene);
+const ladeTex = (n, farbe) => ktx2.loadAsync(`/public/assets/texturen/${n}.ktx2`).then((t) => {
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = farbe ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.anisotropy = 8;
+  return t;
+});
+async function holzMaterial(name, wiederholung = [1, 1]) {
+  const [map, normalMap, orm] = await Promise.all([ladeTex(`${name}_farbe`, true), ladeTex(`${name}_normal`, false), ladeTex(`${name}_orm`, false)]);
+  for (const t of [map, normalMap, orm]) t.repeat.set(...wiederholung);
+  return new THREE.MeshStandardMaterial({ map, normalMap, roughnessMap: orm, aoMap: orm, metalness: 0 });
+}
+const schatten = (o) => o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+function boden(groesse = 3) {
+  return holzMaterial('boden-dielen', [groesse / 0.9, groesse / 0.9]).then((m) => {
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(groesse, groesse), m);
+    b.rotation.x = -Math.PI / 2;
+    b.receiveShadow = true;
+    return b;
+  });
+}
+function massbandAusziehen(mb, mm) {
+  const band = mb.getObjectByName('Band');
+  const haken = mb.getObjectByName('Haken');
+  const aus = mb.getObjectByName('Bandaustritt');
+  band.scale.z = Math.max(mm, 1) / 1000;
+  haken.position.z = aus.position.z - mm / 1000;
+  const mat = band.material;
+  for (const t of [mat.map, mat.roughnessMap]) if (t) t.repeat.x = mm / 1000;
+}
+const titel = (t) => { document.getElementById('titel').textContent = t; };
+
+const ansichten = {
+  async saege() {
+    titel('Fuchsschwanz · saege.glb');
+    const s = await laden('saege');
+    s.rotation.set(0, -Math.PI / 2, 0);
+    s.position.set(-0.3, 0.12, 0);
+    schatten(s);
+    szene.add(s, await boden());
+    sonne.position.set(-0.6, 1.4, 1.2);
+    kamera.position.set(0.03, 0.25, 1.05);
+    kamera.lookAt(0.03, 0.1, 0);
+  },
+  async saegeNah() {
+    titel('Fuchsschwanz, Griff und Zahnung · saege.glb');
+    const s = await laden('saege');
+    s.rotation.set(0, -Math.PI / 2, 0);
+    s.position.set(0, 0.12, 0);
+    schatten(s);
+    szene.add(s, await boden());
+    sonne.position.set(-0.5, 1.2, 1.3);
+    kamera.position.set(0.16, 0.16, 0.3);
+    kamera.lookAt(0.07, 0.09, 0);
+  },
+  async massband() {
+    titel('Massband, 240 mm ausgezogen · massband.glb');
+    const mb = await laden('massband');
+    massbandAusziehen(mb, 240);
+    // Gehäuse rechts, Haken links: so liest man die Skala aufrecht (Zahlen steigen nach rechts)
+    mb.rotation.y = Math.PI / 2;
+    mb.position.set(0.11, 0.0345, 0);
+    schatten(mb);
+    szene.add(mb, await boden());
+    sonne.position.set(-0.4, 1.3, 0.9);
+    kamera.position.set(0.02, 0.2, 0.22);
+    kamera.lookAt(0.0, 0.01, 0);
+  },
+  async bleistift() {
+    titel('Bleistift · bleistift.glb');
+    const b = await laden('bleistift');
+    b.rotation.set(0, Math.PI / 2 + 0.3, 0);
+    b.position.set(0.02, 0.0036, 0);
+    schatten(b);
+    szene.add(b, await boden());
+    sonne.position.set(-0.5, 1.2, 1.0);
+    kamera.position.set(0.0, 0.09, 0.16);
+    kamera.lookAt(0.035, 0.0, 0.0);
+  },
+  async werkbank() {
+    titel('Werkbank mit Säge, Massband, Bleistift · werkbank.glb');
+    const [wb, s, mb, b] = await Promise.all(['werkbank', 'saege', 'massband', 'bleistift'].map(laden));
+    const ap = wb.getObjectByName('Arbeitsflaeche').position;
+    s.rotation.set(0, -1.3, Math.PI / 2);
+    s.position.set(0.25, ap.y + 0.013, 0.02);
+    massbandAusziehen(mb, 0);
+    mb.position.set(-0.25, ap.y + 0.0345, 0.12);
+    mb.rotation.y = 0.6;
+    b.rotation.set(0, 1.9, 0);
+    b.position.set(-0.05, ap.y + 0.0036, 0.2);
+    for (const o of [wb, s, mb, b]) { schatten(o); szene.add(o); }
+    szene.add(await boden(5));
+    sonne.position.set(-1.6, 2.6, 1.8);
+    sonne.target.position.set(0, 0.6, 0);
+    const sc = sonne.shadow.camera;
+    sc.left = sc.bottom = -1.4; sc.right = sc.top = 1.4; sc.near = 0.1; sc.far = 8;
+    kamera.position.set(0.55, 1.55, 1.55);
+    kamera.lookAt(-0.05, 0.62, 0);
+  },
+  async texturen() {
+    titel('Texturen (je 2 × 2 Kacheln): Fichte längs, Fichte Hirnholz, Wandputz, Dielenboden');
+    const namen = ['fichte-laengs', 'fichte-hirn', 'wand-putz', 'boden-dielen'];
+    for (const [i, n] of namen.entries()) {
+      const m = await holzMaterial(n, [2, 2]);
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.46), m);
+      p.position.set((i - 1.5) * 0.5, 0, 0);
+      szene.add(p);
+    }
+    // Brett 600 × 140 × 18 mm: Längsholz auf den Flächen, Hirnholz an den Enden
+    const [l, h] = await Promise.all([holzMaterial('fichte-laengs', [1.2, 0.28]), holzMaterial('fichte-hirn', [0.93, 0.12])]);
+    const brett = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.14, 0.018), [h, h, l, l, l, l]);
+    brett.position.set(0, -0.42, 0.05);
+    brett.rotation.set(0.25, -0.5, 0);
+    szene.add(brett);
+    sonne.position.set(-1.2, 1.2, 1.6);
+    kamera.position.set(0, -0.12, 1.6);
+    kamera.lookAt(0, -0.12, 0);
+  },
+};
+
+await ansichten[ansicht]();
+renderer.render(szene, kamera);
+window.__fertig = true;
+</script>
+</body>
+</html>
