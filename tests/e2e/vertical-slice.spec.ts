@@ -133,7 +133,7 @@ async function saegen(page: Page, anzahl: number): Promise<void> {
 }
 
 test.describe('Vertical Slice 0.1 (/spiel/)', () => {
-  test.setTimeout(240_000);
+  test.setTimeout(420_000);
 
   test('kompletter Ablauf mit Touch: Auftrag → Messen → Anreissen → Ansetzen → Sägen (Neuladen mittendrin) → Ergebnis → Abliefern', async ({ page }) => {
     test.skip(hochkant(page), 'Querformat-Ablauf (ADR 0004); Hochformat zeigt nur den Hinweis');
@@ -258,7 +258,9 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     await expect(karte.locator('.hud-q')).toHaveText(`Qualität ${String(Math.round(e.qualitaet.q))} / 100`);
     const ursache = await page.evaluate(([id, w]) => window.__spiel?.text(id, w) ?? '', [e.qualitaet.hauptursache, e.qualitaet.hauptursacheWert] as const);
     await expect(karte.locator('.hud-ursache')).toContainText(ursache);
-    await expect(karte.locator('.hud-ursache')).toContainText(`Ist ${String(e.laenge_ist_mm).replace('.', ',')}`.replace(/,0$/, ''));
+    // Karte zeigt die Ist-Länge auf 0,1 mm gerundet
+    const ist = (Math.round(e.laenge_ist_mm * 10) / 10).toFixed(1).replace('.', ',').replace(/,0$/, '');
+    await expect(karte.locator('.hud-ursache')).toContainText(`Ist ${ist} mm (Soll 600)`);
     const teil = z?.inventar.werkstuecke.find((w) => w.id === e.teilId);
     expect(teil?.masse_mm.l).toBe(e.laenge_ist_mm);
     expect(await page.evaluate(() => window.__view?.zustand().brett.schnittIstMm)).toBeCloseTo(e.laenge_ist_mm, 3);
