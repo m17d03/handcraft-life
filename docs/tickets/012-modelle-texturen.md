@@ -4,7 +4,7 @@ titel: Werkstatt-Assets – Säge, Massband, Bleistift, Werkbank, Holz- und Raum
 agent: asset-artist
 meilenstein: Phase 1 – Vertical Slice 0.1
 status: done
-reifegrad: Implementiert
+reifegrad: Getestet
 blocked_by: []
 branch: ticket/012-assets
 ---

@@ -4,7 +4,7 @@ titel: Kern-Logik und Holz-Modul – Werkstück, Messen, Schnitt, Qualität, Auf
 agent: engine-engineer
 meilenstein: Phase 1 – Vertical Slice 0.1
 status: done
-reifegrad: Implementiert
+reifegrad: Getestet
 blocked_by: []
 branch: ticket/008-kern-logik
 ---

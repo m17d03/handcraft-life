@@ -4,7 +4,7 @@ titel: Vertical Slice verdrahten – Auftrag → Messen → Sägen → Ergebnis 
 agent: engine-engineer
 meilenstein: Phase 1 – Vertical Slice 0.1
 status: done
-reifegrad: Implementiert
+reifegrad: Getestet
 blocked_by: [008, 009, 010, 011, 012]
 branch: ticket/013-integration
 ---

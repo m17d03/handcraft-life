@@ -4,7 +4,7 @@ titel: Spielstand – IndexedDB, Schema-Versionen, Migrationskette, Sicherung, F
 agent: engine-engineer
 meilenstein: Phase 1 – Vertical Slice 0.1
 status: done
-reifegrad: Implementiert
+reifegrad: Getestet
 blocked_by: [008]
 branch: ticket/009-spielstand
 ---
