@@ -33,9 +33,10 @@ const PX_PRO_MM = 2;
 
 /**
  * Massband-Skala: gelbes Band, Striche je mm (kurz), 5 mm (mittel), 10 mm (lang, mit cm-Zahl),
- * 100 mm rot hervorgehoben. u = 0 ist der Haken (0 mm).
+ * 100 mm rot hervorgehoben. u = 0 ist der Haken (0 mm). `rueckwaerts`: 0 mm bei u = 1, Ziffern
+ * trotzdem lesbar (für ein Band, das vom rechten Brettende nach links läuft).
  */
-export function massbandTextur(anisotropie: number): THREE.CanvasTexture {
+export function massbandTextur(anisotropie: number, rueckwaerts = false): THREE.CanvasTexture {
   const w = MASSBAND_TEXTUR_MM * PX_PRO_MM;
   const h = 64;
   const c = document.createElement('canvas');
@@ -50,17 +51,18 @@ export function massbandTextur(anisotropie: number): THREE.CanvasTexture {
     g.fillRect(0, h - 3, w, 3);
     g.fillStyle = '#1b1712';
     for (let mm = 0; mm <= MASSBAND_TEXTUR_MM; mm++) {
-      const x = mm * PX_PRO_MM;
+      const x = (rueckwaerts ? MASSBAND_TEXTUR_MM - mm : mm) * PX_PRO_MM;
       const lang = mm % 10 === 0 ? 22 : mm % 5 === 0 ? 15 : 9;
       g.fillRect(x, 0, 1, lang);
     }
     g.textBaseline = 'alphabetic';
     for (let cm = 1; cm * 10 <= MASSBAND_TEXTUR_MM; cm++) {
-      const x = cm * 10 * PX_PRO_MM;
+      const x = (rueckwaerts ? MASSBAND_TEXTUR_MM - cm * 10 : cm * 10) * PX_PRO_MM;
       const voll = cm % 10 === 0;
       g.fillStyle = voll ? '#b3261e' : '#1b1712';
       g.font = `${voll ? '700 ' : '600 '}${voll ? '26' : '20'}px -apple-system, "Helvetica Neue", Arial, sans-serif`;
-      g.fillText(String(cm), x + 2, h - 10);
+      g.textAlign = rueckwaerts ? 'right' : 'left';
+      g.fillText(String(cm), rueckwaerts ? x - 2 : x + 2, h - 10);
     }
   }
   const t = new THREE.CanvasTexture(c);

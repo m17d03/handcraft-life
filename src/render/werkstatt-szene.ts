@@ -21,24 +21,24 @@ import { BRETT, BRETT_OBEN_Y, RAUM, WERKBANK, WERKBANK_AABB } from './werkstatt-
 /** Palette Stil A (sRGB). Holz-Töne sind Multiplikatoren auf die Fichtentextur. */
 export const PALETTE = {
   tiefe: '#1f1a15',
-  eicheTon: '#b99a80', // ergibt mit Fichtentextur ≈ Eiche #C58F55
+  eicheTon: '#a08068', // ergibt mit Fichtentextur ≈ Eiche #C58F55
   nussTon: '#86685a', // ≈ Nussbaum #8E5D33
-  bodenTon: '#5e4536', // dunkles Holz ≈ #3B2A1C
+  bodenTon: '#45342a', // dunkles Holz ≈ #3B2A1C
   deckeTon: '#5a4434',
-  wand: '#a8977e',
+  wand: '#857c72',
   stahl: '#7d8a8f',
   bernstein: '#d9a35b',
   hellAkzent: '#ffd08a',
   tanne: '#2f5a4a',
   graphit: '#2b2724',
   fuge: '#1a130d',
-  sonne: '#ffc68a', // ca. 3500 K
-  himmel: '#a9b9cc', // kühle Schattenseite
-  bodenLicht: '#6b4a30',
+  sonne: '#ffcf9c', // ca. 3500 K
+  himmel: '#8ea2bd', // kühle Schattenseite
+  bodenLicht: '#4a3a30',
   fenster: '#fff0d6',
 } as const;
 
-const SONNE_RICHTUNG: Vec3 = normalize([0.75, -0.45, -0.48]); // Richtung, in die das Licht fällt
+const SONNE_RICHTUNG: Vec3 = normalize([0.72, -0.3, -0.62]); // Richtung, in die das Licht fällt
 const HERVORHEBUNG = { farbe: '#ffb35c', staerke: 0.45 } as const;
 
 export interface SaegeZustand {
@@ -83,6 +83,8 @@ export class WerkstattSzene {
   private readonly massband: THREE.Group;
   private readonly band: THREE.Mesh;
   private readonly bandTextur: THREE.CanvasTexture;
+  private readonly bandTexturRueck: THREE.CanvasTexture;
+  private readonly bandMat: THREE.MeshStandardMaterial;
   private readonly haken: THREE.Mesh;
   private readonly gehaeuse: THREE.Mesh;
   private brettSchluessel = '';
@@ -194,12 +196,14 @@ export class WerkstattSzene {
     const eiche = holzMat('werkbank.platte', PALETTE.eicheTon);
     const nuss = holzMat('werkbank.gestell', PALETTE.nussTon);
     this.hervorMat.set('werkbank', [eiche, nuss]);
+    // Möbel ausserhalb der Werkbank mit eigenem Material, damit hervorheben('werkbank') nur die Werkbank trifft
+    const moebel = holzMat('moebel', PALETTE.nussTon);
     const werkbank = new THREE.Group();
     werkbank.name = 'werkbank';
     const { x: bx, z: bz, laenge: bl, tiefe: bt, hoehe: bh, platte: bp } = WERKBANK;
     const platte = this.mesh(
       'werkbank.platte',
-      quader({ groesse: [bl, bp, bt], fase: 0.003, uvMeter: 1.4, uvVersatz: [0.37, 0.61] }, [bx, bh - bp / 2, bz]),
+      quader({ groesse: [bl, bp, bt], fase: 0.003, uvMeter: 3.2, uvVersatz: [0.37, 0.61] }, [bx, bh - bp / 2, bz]),
       eiche,
       { empfaengt: true, eltern: werkbank },
     );
@@ -234,6 +238,27 @@ export class WerkstattSzene {
     this.merke(kontakt.geometry);
     s.add(kontakt);
 
+    // Warmer Lichtfleck auf der Platte (Fensterlicht, Stil A); additiv, liegt unter Brett und Werkzeug
+    const bankFleckGeo = new THREE.PlaneGeometry(1.25, 0.62);
+    const bp2 = bankFleckGeo.getAttribute('position');
+    for (let k = 0; k < bp2.count; k++) if (bp2.getY(k) > 0) bp2.setX(k, bp2.getX(k) - 0.28);
+    bankFleckGeo.rotateX(-Math.PI / 2).translate(bx - 0.35, bh + 0.0006, bz - 0.02);
+    const bankFleck = new THREE.Mesh(
+      bankFleckGeo,
+      this.basis('werkbank.lichtfleck', {
+        color: PALETTE.sonne,
+        alphaMap: weich,
+        transparent: true,
+        opacity: 0.14,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    bankFleck.name = 'werkbank.lichtfleck';
+    bankFleck.renderOrder = 1;
+    this.merke(bankFleckGeo);
+    s.add(bankFleck);
+
     // ---- Wandregal über der Werkbank mit Dosen/Gläsern (instanziert)
     const regalY = 1.62;
     const regalZ = -D / 2 + 0.12;
@@ -244,7 +269,7 @@ export class WerkstattSzene {
         quader({ groesse: [0.03, 0.18, 0.18], fase: 0.003, faser: 1 }, [-0.6, regalY - 0.1, regalZ - 0.01]),
         quader({ groesse: [0.03, 0.18, 0.18], fase: 0.003, faser: 1 }, [0.8, regalY - 0.1, regalZ - 0.01]),
       ]),
-      nuss,
+      moebel,
       { empfaengt: false },
     );
     const dosenGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.12, 16);
@@ -289,7 +314,7 @@ export class WerkstattSzene {
       konsole.push(quader({ groesse: [0.5, 0.04, 0.05], fase: 0.003 }, [W / 2 - 0.25, 0.37, z]));
       konsole.push(quader({ groesse: [0.04, 0.37, 0.05], fase: 0.003, faser: 1 }, [W / 2 - 0.03, 0.185, z]));
     }
-    this.mesh('holzlager.konsolen', mergeGeometries(konsole), nuss, { empfaengt: false });
+    this.mesh('holzlager.konsolen', mergeGeometries(konsole), moebel, { empfaengt: false });
 
     // ---- Brett (Fichte) und Reststück; Geometrie folgt der Lage (setzeBrett)
     this.brettMat = holzMat('brett', '#ffffff');
@@ -304,7 +329,7 @@ export class WerkstattSzene {
     this.bezugsMarke = this.mesh('brett.bezugsende', new THREE.BoxGeometry(0.004, 0.0004, BRETT.breiteMm / 1000 - 0.004), markeMat, {});
     this.markierung = this.mesh(
       'brett.markierung',
-      new THREE.BoxGeometry(0.0007, 0.0003, BRETT.breiteMm / 1000 - 0.01),
+      new THREE.BoxGeometry(0.0007, 0.0003, BRETT.breiteMm / 1000 - 0.002),
       this.mat('brett.markierung', { color: PALETTE.graphit, roughness: 0.45, metalness: 0.2 }),
       {},
     );
@@ -318,7 +343,7 @@ export class WerkstattSzene {
     // ---- Säge (Platzhalter): Blatt + D-Griff; Ursprung = Zahnlinie am Brett-Hinterrand
     this.saege = new THREE.Group();
     this.saege.name = 'saege';
-    const blattMat = this.mat('saege.blatt', { color: PALETTE.stahl, roughness: 0.38, metalness: 0.85, side: THREE.DoubleSide });
+    const blattMat = this.mat('saege.blatt', { color: PALETTE.stahl, roughness: 0.4, metalness: 0.85, side: THREE.DoubleSide });
     const griffMat = this.mat('saege.griff', { color: '#7a4a2a', roughness: 0.5, metalness: 0 });
     this.hervorMat.set('saege', [blattMat, griffMat]);
     const blattForm = new THREE.Shape([
@@ -359,8 +384,10 @@ export class WerkstattSzene {
     this.massband.name = 'massband';
     const gehaeuseMat = this.mat('massband.gehaeuse', { color: PALETTE.bernstein, roughness: 0.42, metalness: 0, vertexColors: true });
     this.bandTextur = massbandTextur(anisotropie);
-    this.merke(this.bandTextur);
+    this.bandTexturRueck = massbandTextur(anisotropie, true);
+    this.merke(this.bandTextur, this.bandTexturRueck);
     const bandMat = this.mat('massband.band', { color: '#ffffff', map: this.bandTextur, roughness: 0.5, metalness: 0.1 });
+    this.bandMat = bandMat;
     this.hervorMat.set('massband', [gehaeuseMat, bandMat]);
     this.gehaeuse = this.mesh(
       'massband.gehaeuse',
@@ -512,10 +539,13 @@ export class WerkstattSzene {
 
   private setzeMassband(lage: BrettLage, mm: number | null): void {
     const { richtung } = bezug(lage);
-    const bandZ = BRETT.breiteMm / 2000 - 0.0105;
+    // Band liegt an der HINTEREN Brettkante, das Gehäuse jenseits des Masses: der Bleistiftstrich bei
+    // `mm` bleibt aus Spieler- und Arbeitsansicht sichtbar.
+    const bandZ = -(BRETT.breiteMm / 2000 - 0.0105);
     const aus = mm !== null && mm > 0;
     this.band.visible = aus;
     this.haken.visible = aus;
+    this.massband.rotation.set(0, 0, 0);
     if (mm === null || !aus) {
       // Ruhelage hinten links auf der Werkbank
       this.massband.position.set(WERKBANK.x - 0.78, WERKBANK.hoehe, WERKBANK.z - 0.12);
@@ -524,15 +554,23 @@ export class WerkstattSzene {
       return;
     }
     const laenge = Math.min(mm, MASSBAND_TEXTUR_MM);
+    const l = laenge / 1000;
     const start = mmNachWelt(lage, 0, bandZ * 1000);
     this.massband.position.set(start[0], BRETT_OBEN_Y, start[2]);
-    // lokal +x zeigt vom Bezugsende weg; bei Ende 'b' um 180° gedreht
-    this.massband.rotation.set(0, richtung === 1 ? 0 : Math.PI, 0);
-    this.band.scale.set(laenge / 1000, 1, 1);
-    this.band.position.set(0, 0.0004, 0);
-    this.bandTextur.repeat.set(laenge / MASSBAND_TEXTUR_MM, 1);
-    this.haken.position.set(-0.00075, -0.008, 0);
-    this.gehaeuse.position.set(laenge / 1000 + 0.036, 0.032, 0.002);
+    // Keine Drehung: Ziffern stehen für den Spieler (vorne) bei beiden Bezugsenden aufrecht;
+    // für Ende 'b' läuft das Band nach −x mit einer rückwärts gezeichneten Skala.
+    const vorwaerts = richtung === 1;
+    const tex = vorwaerts ? this.bandTextur : this.bandTexturRueck;
+    if (this.bandMat.map !== tex) {
+      this.bandMat.map = tex;
+      this.bandMat.needsUpdate = true;
+    }
+    tex.repeat.set(laenge / MASSBAND_TEXTUR_MM, 1);
+    tex.offset.set(vorwaerts ? 0 : 1 - laenge / MASSBAND_TEXTUR_MM, 0);
+    this.band.scale.set(l, 1, 1);
+    this.band.position.set(vorwaerts ? 0 : -l, 0.0004, 0);
+    this.haken.position.set(-richtung * 0.00075, -0.008, 0);
+    this.gehaeuse.position.set(richtung * (l + 0.06), 0.032, -0.004);
   }
 
   private setzeSaege(lage: BrettLage, markierungMm: number | null, z: SaegeZustand | null): void {
@@ -612,6 +650,18 @@ export class WerkstattSzene {
     const b = id === 'werkbank' ? WERKBANK_AABB : this.boxVon(id);
     if (!b) return null;
     return [(b.min[0] + b.max[0]) / 2, b.max[1], (b.min[2] + b.max[2]) / 2];
+  }
+
+  /** Namen der Materialien, die gerade hervorgehoben leuchten (für Tests/Debug). */
+  leuchtendeMaterialien(): string[] {
+    const namen = new Set<string>();
+    this.szene.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshStandardMaterial) {
+        const m = o.material;
+        if (m.emissive.getHexString() === HERVORHEBUNG.farbe.slice(1)) namen.add(m.name);
+      }
+    });
+    return [...namen].sort();
   }
 
   dispose(): void {

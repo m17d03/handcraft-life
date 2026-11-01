@@ -38,6 +38,8 @@ export interface WerkstattViewZustand {
   kamera: { x: number; y: number; z: number; yaw: number; pitch: number };
   brett: { laengeMm: number; bezugsende: 'a' | 'b' | null; schnittIstMm: number | null };
   hervorgehoben: string | null;
+  /** Materialnamen, die durch `hervorheben` leuchten (Präfix = Objekt-ID) */
+  leuchtend: string[];
   /** gerenderte Frames seit Start (zählt nur Frames mit gültigem WebGL-Kontext) */
   frames: number;
   kontextVerloren: boolean;

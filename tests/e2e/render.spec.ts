@@ -15,10 +15,13 @@ declare global {
 const SPIEL = './spiel/?debug=1';
 const LANG = { timeout: 60_000 };
 
+// Warnungen über GL-Objekte eines fremden/alten Kontexts zählen ebenfalls als Fehler (QA 010).
+const GL_WARNUNG = /does not belong to this context|object does not belong/i;
+
 function sammleFehler(page: Page): string[] {
   const probleme: string[] = [];
   page.on('console', (msg) => {
-    if (msg.type() === 'error') probleme.push(msg.text());
+    if (msg.type() === 'error' || (msg.type() === 'warning' && GL_WARNUNG.test(msg.text()))) probleme.push(msg.text());
   });
   page.on('pageerror', (err) => { probleme.push(err.message); });
   return probleme;
@@ -112,6 +115,33 @@ test.describe('Spielseite /spiel/', () => {
     expect(nachSchnitt.restId).toBe('reststueck');
     expect(nachSchnitt.hervor).toBe('brett');
 
+    // Hervorhebung nur am Zielobjekt (QA 010: Werkbank teilte Material mit Regal/Holzlager)
+    for (const id of ['werkbank', 'brett', 'saege', 'massband', 'bleistift']) {
+      const leuchtend = await page.evaluate((i) => {
+        window.__view?.hervorheben(i);
+        return window.__view?.zustand().leuchtend ?? [];
+      }, id);
+      expect(leuchtend.length).toBeGreaterThan(0);
+      for (const name of leuchtend) expect(name === id || name.startsWith(`${id}.`)).toBe(true);
+    }
+    expect(await page.evaluate(() => { window.__view?.hervorheben(null); return window.__view?.zustand().leuchtend; })).toEqual([]);
+
+    // Messen → Anreissen: Massband verdeckt den Bleistiftstrich nicht (beide Bezugsenden)
+    for (const ende of ['a', 'b'] as const) {
+      const id = await page.evaluate((e) => {
+        const v = window.__view;
+        if (!v) throw new Error('__view fehlt');
+        v.schnittErgebnisZeigen(null);
+        v.brettZeigen(2000, e);
+        v.massbandZeigen(600);
+        v.markierungZeigen(600);
+        const p = v.weltNachBildschirm(600);
+        return p ? v.pick(p.x, p.y) : null;
+      }, ende);
+      expect(id).toBe('brett');
+    }
+    await page.evaluate(() => { window.__view?.massbandZeigen(null); window.__view?.markierungZeigen(null); });
+
     // Arbeitsansicht: Fahrt endet (≤ 600 ms, hier nur auf Zustand gewartet), Brett weiterhin pickbar
     await page.evaluate(() => {
       window.__view?.schnittErgebnisZeigen(null);
@@ -172,6 +202,9 @@ test.describe('Spielseite /spiel/', () => {
       return p ? window.__view?.pick(p.x, p.y) : null;
     });
     expect(id).toBe('brett');
+    // dispose nach der Wiederherstellung löscht nur eigene GL-Objekte (keine Fremdkontext-Warnungen)
+    await page.evaluate(() => { window.__view?.dispose(); });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     // Konsolenmeldungen des Browsers zum absichtlichen Verlust sind kein Fehler der Seite
     expect(probleme.filter((p) => !/CONTEXT_LOST|context lost|loseContext/i.test(p))).toEqual([]);
   });

@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import type { PerfMelder } from '../perf/perf-snapshot';
 import { aufloesungsGrenzen, DynamischeAufloesung, type AufloesungsParameter } from './aufloesung';
 import { bildschirmNachBrettMm, brettMmNachBildschirm, type BrettLage } from './brett-koordinaten';
-import { erzeugeHolzTexturen } from './holztextur';
+import { erzeugeHolzTexturen, type HolzTexturen } from './holztextur';
 import { arbeitsPose, IchKamera, Kamerafahrt, type KameraPose } from './ich-kamera';
 import { add, clamp, forwardFromYawPitch, projectToScreen, screenRay, type Projektion } from './mathe';
 import { pickNaechstes } from './picking';
@@ -31,7 +31,9 @@ const endlich = (v: number, ersatz = 0): number => (Number.isFinite(v) ? v : ers
 
 class WerkstattViewThree implements WerkstattViewDebug {
   private readonly renderer: THREE.WebGLRenderer;
-  private readonly szene: WerkstattSzene;
+  private szene: WerkstattSzene;
+  private readonly holz: HolzTexturen;
+  private readonly anisotropie: number;
   private readonly kamera: THREE.PerspectiveCamera;
   private readonly ich: IchKamera;
   private readonly fahrt = new Kamerafahrt(ARBEITSANSICHT.fahrtMs);
@@ -68,7 +70,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, stencil: false, powerPreference: 'high-performance' });
     this.renderer = r;
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 0.85;
+    r.toneMappingExposure = 0.78;
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
@@ -80,13 +82,14 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.maxDichte = grenzen.max;
     this.dyn = (opt.aufloesung?.dynamisch ?? true) ? new DynamischeAufloesung(grenzen.min, grenzen.max) : null;
 
-    const holz = erzeugeHolzTexturen(opt.holzTexturGroesse ?? 1024);
-    this.szene = new WerkstattSzene(holz, Math.min(4, r.capabilities.getMaxAnisotropy()));
+    this.holz = erzeugeHolzTexturen(opt.holzTexturGroesse ?? 1024);
+    this.anisotropie = Math.min(4, r.capabilities.getMaxAnisotropy());
+    this.szene = new WerkstattSzene(this.holz, this.anisotropie);
     this.szene.umgebungErzeugen(r);
     this.kamera = new THREE.PerspectiveCamera((KAMERA.fovY * 180) / Math.PI, 1, KAMERA.near, KAMERA.far);
     this.ich = new IchKamera(KAMERA.start, KAMERA.augenhoehe, BEGEHBAR);
     this.pose = this.ich.pose;
-    this.anwenden();
+    this.anwenden(true);
 
     canvas.addEventListener('webglcontextlost', this.beiVerlust);
     canvas.addEventListener('webglcontextrestored', this.beiWiederherstellung);
@@ -162,14 +165,19 @@ class WerkstattViewThree implements WerkstattViewDebug {
 
   private readonly beiWiederherstellung = (): void => {
     this.verloren = false;
-    // Render-Targets (Umgebung, Schatten) sind verloren; Texturen/Geometrien lädt Three neu hoch.
+    // Alle GPU-Objekte des alten Kontexts sind weg. Die alten Three-Objekte tragen noch Dispose-Hörer der
+    // alten Renderer-Module (dispose() würde fremde GL-Objekte löschen → Warnungen). Darum die Szene
+    // ohne dispose verwerfen und aus dem gespeicherten Zustand neu aufbauen (Holztextur wird wiederverwendet).
+    this.szene = new WerkstattSzene(this.holz, this.anisotropie);
     this.szene.umgebungErzeugen(this.renderer);
-    this.renderer.shadowMap.needsUpdate = true;
-    this.feedbackOffen = true;
+    this.anwenden(true);
   };
 
-  /** Zustand → Szene (sofort, damit pick/Projektion direkt nach einem Aufruf stimmen). */
-  private anwenden(): void {
+  /**
+   * Zustand → Szene (sofort, damit pick/Projektion direkt nach einem Aufruf stimmen).
+   * `schatten`: nur wenn sich schattenwerfende Geometrie bewegt, wird die Shadow-Map neu gezeichnet.
+   */
+  private anwenden(schatten: boolean): void {
     this.szene.aktualisiere({
       lage: this.lage,
       markierungMm: this.markierungMm,
@@ -177,7 +185,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
       saege: this.saege,
       hervorgehoben: this.hervor,
     });
-    this.renderer.shadowMap.needsUpdate = true;
+    if (schatten) this.renderer.shadowMap.needsUpdate = true;
     this.feedbackOffen = true;
   }
 
@@ -224,17 +232,17 @@ class WerkstattViewThree implements WerkstattViewDebug {
     const l = endlich(laengeMm, BRETT.standardLaengeMm);
     this.lage = { laengeMm: clamp(l, 10, 4000), bezugsende, schnittIstMm: null };
     if (this.arbeit) this.arbeitsZiel = this.berechneArbeitsPose();
-    this.anwenden();
+    this.anwenden(true);
   }
 
   markierungZeigen(mm: number | null): void {
     this.markierungMm = mm === null || !Number.isFinite(mm) ? null : clamp(mm, 0, this.lage.laengeMm);
-    this.anwenden();
+    this.anwenden(false);
   }
 
   massbandZeigen(mm: number | null): void {
     this.massbandMm = mm === null || !Number.isFinite(mm) ? null : clamp(mm, 0, this.lage.laengeMm);
-    this.anwenden();
+    this.anwenden(true);
   }
 
   saegeZeigen(zustand: { versatzMm: number; tiefe01: number; driftGrad: number } | null): void {
@@ -242,18 +250,18 @@ class WerkstattViewThree implements WerkstattViewDebug {
       zustand === null
         ? null
         : { versatzMm: clamp(endlich(zustand.versatzMm), -50, 50), tiefe01: clamp(endlich(zustand.tiefe01), 0, 1), driftGrad: clamp(endlich(zustand.driftGrad), -30, 30) };
-    this.anwenden();
+    this.anwenden(true);
   }
 
   schnittErgebnisZeigen(laengeIstMm: number | null): void {
     const ist = laengeIstMm === null || !Number.isFinite(laengeIstMm) ? null : clamp(laengeIstMm, 1, this.lage.laengeMm);
     this.lage = { ...this.lage, schnittIstMm: ist };
-    this.anwenden();
+    this.anwenden(true);
   }
 
   hervorheben(id: string | null): void {
     this.hervor = id;
-    this.anwenden();
+    this.anwenden(false);
   }
 
   weltNachBildschirm(mmAufBrett: number): { x: number; y: number } | null {
@@ -289,6 +297,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
       kamera: { x: p.eye[0], y: p.eye[1], z: p.eye[2], yaw: p.yaw, pitch: p.pitch },
       brett: { laengeMm: this.lage.laengeMm, bezugsende: this.lage.bezugsende, schnittIstMm: this.lage.schnittIstMm },
       hervorgehoben: this.hervor,
+      leuchtend: this.szene.leuchtendeMaterialien(),
       frames: this.frames,
       kontextVerloren: this.verloren,
     };
