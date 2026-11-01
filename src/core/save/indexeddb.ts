@@ -84,8 +84,15 @@ function sicherungEinfuegen(store: IDBObjectStore, art: SicherungsArt, zeit: str
 
 export class IndexedDbAblage implements Ablage {
   private db: Promise<IDBDatabase> | null = null;
+  /** Geöffnete Verbindung, sobald `db` erfüllt ist – erlaubt Transaktionen ohne Warten (Ticket 017, F7). */
+  private offen: IDBDatabase | null = null;
+  /** Laufnummer des letzten `schreiben()`-Aufrufs bzw. der zuletzt angelegten Schreib-Transaktion. */
+  private schreibNr = 0;
+  private angelegtNr = 0;
   /** Zähler geöffneter Verbindungen (Diagnose/Test). */
   oeffnungen = 0;
+  /** Angelegte Schreib-Transaktionen und übersprungene ältere Aufrufe (Diagnose/Test). */
+  readonly schreibStatistik = { angelegt: 0, uebersprungen: 0 };
 
   constructor(private readonly fabrik: IDBFactory | undefined = (globalThis as { indexedDB?: IDBFactory }).indexedDB) {}
 
@@ -94,7 +101,10 @@ export class IndexedDbAblage implements Ablage {
       if (this.fabrik === undefined) return Promise.reject(new Error('IndexedDB nicht verfügbar'));
       this.oeffnungen += 1;
       const verwerfen = (): void => {
-        if (this.db === verbindung) this.db = null;
+        if (this.db === verbindung) {
+          this.db = null;
+          this.offen = null;
+        }
       };
       const verbindung: Promise<IDBDatabase> = oeffnen(this.fabrik).then(
         (db) => {
@@ -104,6 +114,7 @@ export class IndexedDbAblage implements Ablage {
             db.close();
             verwerfen();
           };
+          if (this.db === verbindung) this.offen = db;
           return db;
         },
         (e: unknown) => {
@@ -116,14 +127,41 @@ export class IndexedDbAblage implements Ablage {
     return this.db;
   }
 
-  /** Führt `f` aus; ist die Verbindung verloren, wird sie verworfen und `f` genau einmal wiederholt. */
-  private async mitDb<T>(f: (db: IDBDatabase) => Promise<T>): Promise<T> {
+  /**
+   * Führt `f` aus; ist die Verbindung verloren, wird sie verworfen und `f` genau einmal wiederholt.
+   * Ist die Verbindung schon offen, läuft `f` noch im selben Aufruf (synchron) – wichtig für `pagehide`:
+   * die Transaktion existiert dann, bevor der Browser die Seite einfriert oder beendet.
+   */
+  private mitDb<T>(f: (db: IDBDatabase) => Promise<T>): Promise<T> {
+    const offen = this.offen;
+    if (offen !== null) {
+      const nochmal = (e: unknown): Promise<T> => {
+        if (!verbindungVerloren(e)) return Promise.reject(e as Error);
+        if (this.offen === offen) {
+          this.offen = null;
+          this.db = null;
+        }
+        return this.verbindung().then(f);
+      };
+      try {
+        return f(offen).catch(nochmal);
+      } catch (e) {
+        return nochmal(e);
+      }
+    }
+    return this.mitDbWarten(f);
+  }
+
+  private async mitDbWarten<T>(f: (db: IDBDatabase) => Promise<T>): Promise<T> {
     const versuch = this.verbindung();
     try {
       return await f(await versuch);
     } catch (e) {
       if (!verbindungVerloren(e)) throw e;
-      if (this.db === versuch) this.db = null;
+      if (this.db === versuch) {
+        this.db = null;
+        this.offen = null;
+      }
       return f(await this.verbindung());
     }
   }
@@ -136,9 +174,23 @@ export class IndexedDbAblage implements Ablage {
     });
   }
 
+  /**
+   * Schreib-Transaktionen auf denselben Stores führt IndexedDB in der Reihenfolge ihres Anlegens aus. Darum
+   * gilt: Aufrufreihenfolge = Anlegereihenfolge = Ergebnis. Ein älterer Aufruf, dessen Transaktion erst nach
+   * einer neueren angelegt würde (Warten auf die Verbindung, Wiederholung nach Verbindungsverlust), wird
+   * übersprungen – der neuere Stand ist schon eingereiht und darf nie überschrieben werden.
+   */
   schreiben(json: string, zeit: string): Promise<void> {
+    this.schreibNr += 1;
+    const nr = this.schreibNr;
     return this.mitDb((db) => {
+      if (nr < this.angelegtNr) {
+        this.schreibStatistik.uebersprungen += 1;
+        return Promise.resolve();
+      }
       const tx = db.transaction([STORE_SPIELSTAND, STORE_SICHERUNG], 'readwrite');
+      this.angelegtNr = nr;
+      this.schreibStatistik.angelegt += 1;
       const ende = fertig(tx);
       tx.objectStore(STORE_SPIELSTAND).put(json, SCHLUESSEL_AKTUELL);
       sicherungEinfuegen(tx.objectStore(STORE_SICHERUNG), 'autosave', zeit, json);

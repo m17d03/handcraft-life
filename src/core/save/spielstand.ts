@@ -88,6 +88,8 @@ export class Spielstand {
   private generation = 0;
   /** Höchste Generation, deren Schreibvorgang gestartet wurde. */
   private gestartet = 0;
+  /** Höchste Generation, die erfolgreich geschrieben ist (bestimmt `zuletztGespeichert`). */
+  private geschrieben = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private letzterStart = Number.NEGATIVE_INFINITY;
   private kette: Promise<boolean> = Promise.resolve(true);
@@ -282,25 +284,40 @@ export class Spielstand {
       this.hinweis(`Spielstand nicht serialisierbar: ${fehlerText(e)}`);
       return Promise.resolve(false);
     }
-    this.kette = this.kette.then(async () => {
-      try {
-        await this.ablage.schreiben(json, zeit.toISOString());
-        this.zuletztGespeichert = zeit.toISOString();
-        this.letzterFehler = null;
+    // Sofort in die Ablage, nicht hinter einem laufenden Schreibvorgang einreihen (Ticket 017, F7): beim
+    // Verlassen (pagehide) beendet iOS die Seite, bevor ein nachgelagerter Vorgang starten könnte. Die Ablage
+    // übernimmt Aufrufe in Aufrufreihenfolge (IndexedDB: Transaktionen auf denselben Stores laufen in
+    // Anlegereihenfolge) – ein früher gestarteter, älterer Stand überschreibt also nie diesen neueren.
+    let vorgang: Promise<void>;
+    try {
+      vorgang = this.ablage.schreiben(json, zeit.toISOString());
+    } catch (e) {
+      vorgang = Promise.reject(e as Error);
+    }
+    const ergebnis = vorgang.then(
+      () => {
+        if (w.gen >= this.geschrieben) {
+          this.geschrieben = w.gen;
+          this.zuletztGespeichert = zeit.toISOString();
+          this.letzterFehler = null;
+        }
         if (!this.persistVersucht) {
           this.persistVersucht = true;
           void this.persist();
         }
         return true;
-      } catch (e) {
+      },
+      (e: unknown) => {
         this.letzterFehler = fehlerText(e);
         this.hinweis(`Speichern fehlgeschlagen: ${fehlerText(e)}. Spiel läuft weiter.`);
         // Erneut versuchen nur, wenn kein neuerer Stand wartet oder schon geschrieben wird/wurde:
         // ein fehlgeschlagener älterer Stand ersetzt nie einen neueren.
         if (this.wartend === null && w.gen === this.gestartet) this.wartend = w;
         return false;
-      }
-    });
+      },
+    );
+    // `kette` erfüllt sich, wenn alle bisher gestarteten Vorgänge fertig sind; Wert = Ergebnis des neuesten.
+    this.kette = Promise.all([this.kette, ergebnis]).then(([, ok]) => ok);
     return this.kette;
   }
 
