@@ -12,6 +12,13 @@ export default tseslint.config(
       parserOptions: { project: ['./tsconfig.json', './tsconfig.node.json'], tsconfigRootDir: import.meta.dirname },
     },
   },
+  {
+    files: ['src/**/*.ts'],
+    ignores: ['src/render/**'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [{ group: ['three', 'three/*'], message: 'three nur in src/render/ (ADR 0001).' }] }],
+    },
+  },
   // ADR 0001/0002: Spiellogik bleibt engine- und DOM-frei; three nur im Render-Adapter.
   {
     files: ['src/core/**/*.ts', 'src/modules/**/*.ts'],
@@ -19,13 +26,6 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': ['error', { patterns: [{ group: ['three', 'three/*'], message: 'Spiellogik importiert keine Engine (ADR 0001/0002).' }, { group: ['**/render/**', '**/input/**', '**/ui/**'], message: 'Spiellogik kennt weder Darstellung noch Eingabe.' }] }],
       'no-restricted-globals': ['error', 'document', 'window', 'navigator'],
-    },
-  },
-  {
-    files: ['src/**/*.ts'],
-    ignores: ['src/render/**'],
-    rules: {
-      'no-restricted-imports': ['error', { patterns: [{ group: ['three', 'three/*'], message: 'three nur in src/render/ (ADR 0001).' }] }],
     },
   },
   {
