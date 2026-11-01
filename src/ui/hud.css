@@ -31,7 +31,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 .hud.hud-sim-notch { --sal: 59px; --sar: 59px; --sab: 21px; }
-.hud * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+.hud * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .hud [hidden], .hud .aus { display: none !important; }
 .hud-safe-probe { position: fixed; visibility: hidden; pointer-events: none; padding: var(--sat) var(--sar) var(--sab) var(--sal); }
 
