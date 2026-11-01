@@ -42,7 +42,7 @@ export const rohbrettFehlerRegel: ErzeugungsRegel = {
       const min = datenwert(material.werte, 'endriss_min_mm', material.id);
       const max = datenwert(material.werte, 'endriss_max_mm', material.id);
       const laenge = Math.round(zwischen(zufall, min, max));
-      neu.enden[ende] = { ...neu.enden[ende], merkmale: [...neu.enden[ende].merkmale, { id: MERKMAL_ENDRISS, wert: laenge }] };
+      neu.enden[ende] = { ...neu.enden[ende], merkmale: [...neu.enden[ende].merkmale, { id: MERKMAL_ENDRISS, laenge_mm: laenge }] };
     }
     if (zufall() < datenwert(material.werte, 'ast_p', material.id)) {
       const rand = 100;

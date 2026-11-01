@@ -52,7 +52,9 @@ export type Grund =
   | 'kein-werkzeug'
   | 'geld-reicht-nicht'
   | 'ungueltiger-wert'
-  | 'ausschuss';
+  | 'ausschuss'
+  | 'ungueltige-aktion'
+  | 'markierung-ausserhalb';
 
 export type Ereignis =
   | { art: 'auftragAngenommen'; auftragId: string }
@@ -132,7 +134,47 @@ function mitArbeit(
   return f(z, z.arbeit);
 }
 
+/** Mindestabstand der Markierung von beiden Enden (kein Teil/Rest unter Sägbarkeitsgrenze). */
+export const MARKIERUNG_RAND_MM = 10;
+
+const istText = (x: unknown): x is string => typeof x === 'string';
+const istZahl = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+const istEnde = (x: unknown): x is EndeId => x === 'a' || x === 'b';
+
+/**
+ * Laufzeitprüfung einer Aktion (Daten können aus Eingabe, Debug-API oder beschädigtem Spielstand stammen).
+ */
+export function istAktion(x: unknown): x is Aktion {
+  if (typeof x !== 'object' || x === null) return false;
+  const a = x as Record<string, unknown>;
+  switch (a['art']) {
+    case 'auftragAnnehmen':
+      return istText(a['auftragId']);
+    case 'materialKaufen':
+      return istText(a['materialId']);
+    case 'zuschnittBeginnen':
+      return istText(a['werkstueckId']);
+    case 'bezugsendeWaehlen':
+      return istEnde(a['ende']);
+    case 'markierungSetzen':
+    case 'blattVersatzSetzen':
+      return istZahl(a['mm']);
+    case 'stuetzen':
+      return typeof a['an'] === 'boolean';
+    case 'saegezug':
+      return istZahl(a['seitenabweichung']) && istZahl(a['tempo']) && a['tempo'] >= 0;
+    case 'anreissen':
+    case 'abliefern':
+    case 'weiter':
+    case 'abbrechen':
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function ausfuehren(katalog: Katalog, zustand: Spielzustand, aktion: Aktion): AktionsErgebnis {
+  if (!istAktion(aktion)) return ohneWirkung(zustand, 'ungueltige-aktion');
   switch (aktion.art) {
     case 'auftragAnnehmen': {
       const auftrag = zustand.auftraege.find((a) => a.id === aktion.auftragId);
@@ -207,7 +249,11 @@ export function ausfuehren(katalog: Katalog, zustand: Spielzustand, aktion: Akti
         const ws = werkstueckImLager(z, a.werkstueckId);
         const messzeug = katalog.werkzeuge[a.messzeugId];
         if (ws === undefined || messzeug === undefined) return ohneWirkung(zustand, 'werkstueck-unbekannt');
-        a.markierung_mm = messen(ws, aktion.mm, messzeug);
+        const mm = messen(ws, aktion.mm, messzeug);
+        if (mm < MARKIERUNG_RAND_MM || mm > ws.masse_mm.l - MARKIERUNG_RAND_MM) {
+          return ohneWirkung(zustand, 'markierung-ausserhalb');
+        }
+        a.markierung_mm = mm;
         const ereignisse: Ereignis[] = [{ art: 'markierung', mm: a.markierung_mm }];
         if (a.phase === 'messen') {
           a.phase = 'anreissen';
@@ -345,7 +391,10 @@ function schnittAbschliessen(
   if (ws === undefined || auftrag === undefined || material === undefined || produkt === undefined) {
     return ohneWirkung(original, 'werkstueck-unbekannt');
   }
-  if (a.bezugsende === null || a.markierung_mm === null) return ohneWirkung(original, 'falsche-phase');
+  // Beschädigter Spielstand: Laufzeitwerte prüfen, statt später zu werfen.
+  if (!istEnde(a.bezugsende) || !istZahl(a.markierung_mm) || !istZahl(a.blattversatz_mm)) {
+    return ohneWirkung(original, 'falsche-phase');
+  }
 
   const rng = zufallsquelle(z.zufallSaat);
   const teilId = neueId(z, 'ws');

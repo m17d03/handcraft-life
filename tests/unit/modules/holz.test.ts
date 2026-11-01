@@ -42,7 +42,7 @@ describe('Regel Rohbrett-Fehler', () => {
   it('Endriss am gewürfelten Ende mit Länge 20–80 mm, Ast in der Fläche', () => {
     // endriss_p ja (0.1), Ende b (0.7), Länge 20 + 60 × 0.5 = 50, Ast ja (0.1), Position 100 + 1800 × 0.5
     const ws = rohbrettFehlerRegel.anwenden(basis(), FICHTE_BRETT, liste([0.1, 0.7, 0.5, 0.1, 0.5]));
-    expect(ws.enden.b.merkmale).toEqual([{ id: 'holz.merkmal.endriss', wert: 50 }]);
+    expect(ws.enden.b.merkmale).toEqual([{ id: 'holz.merkmal.endriss', laenge_mm: 50 }]);
     expect(ws.enden.a.merkmale).toEqual([]);
     expect(ws.merkmale).toEqual([{ id: 'holz.merkmal.ast', pos_mm: 1000 }]);
   });

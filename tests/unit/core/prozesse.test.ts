@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MASSBAND } from '../../../src/core/kern-modul';
 import {
   datenwert,
+  endmerkmaleVerteilen,
   driftNachZug,
   messen,
   tempoGrenze,
@@ -121,7 +122,7 @@ describe('trennen – Teil und Reststück', () => {
   it('Ast und Endriss wandern mit dem richtigen Stück (Bezug a und b)', () => {
     const ws = sauberesBrett('x', {
       merkmale: [{ id: 'holz.merkmal.ast', pos_mm: 1000 }, { id: 'holz.merkmal.ast', pos_mm: 1700 }, { id: 'kern.merkmal.ohne-pos' }],
-      enden: { a: { winkel_grad: 0, merkmale: [{ id: 'holz.merkmal.endriss', wert: 50 }] }, b: { winkel_grad: 0, merkmale: [] } },
+      enden: { a: { winkel_grad: 0, merkmale: [{ id: 'holz.merkmal.endriss', laenge_mm: 50 }] }, b: { winkel_grad: 0, merkmale: [] } },
     });
     const vonA = schnitt(ws, { bezugsende: 'a' });
     expect(vonA.werkstuecke[0]?.enden.a.merkmale.map((m) => m.id)).toEqual(['holz.merkmal.endriss']);
@@ -137,6 +138,48 @@ describe('trennen – Teil und Reststück', () => {
     expect(vonB.werkstuecke[0]?.merkmale).toEqual([{ id: 'holz.merkmal.ast', pos_mm: 300 }, { id: 'kern.merkmal.ohne-pos' }]);
     expect(vonB.werkstuecke[1]?.enden.b.merkmale.map((m) => m.id)).toEqual(['holz.merkmal.endriss']);
     expect(vonB.werkstuecke[1]?.merkmale).toEqual([{ id: 'holz.merkmal.ast', pos_mm: 398.4 }, { id: 'kern.merkmal.ohne-pos' }]);
+  });
+});
+
+describe('trennen – Endmerkmale positionsgenau (QA B1)', () => {
+  const riss = (laenge_mm: number) => ({ id: 'holz.merkmal.endriss', laenge_mm });
+
+  it('Endriss am Gegenende, der über den Schnitt reicht, liegt auch im Teil', () => {
+    const ws = sauberesBrett('rest650', {
+      masse_mm: { l: 650, b: 140, d: 18 },
+      enden: { a: { winkel_grad: 0, merkmale: [] }, b: { winkel_grad: 0, merkmale: [riss(80)] } },
+      herkunft: 'rest',
+    });
+    const r = schnitt(ws);
+    const [teil, rest] = r.werkstuecke;
+    expect(teil?.masse_mm.l).toBe(600);
+    expect(rest?.masse_mm.l).toBe(48.4);
+    expect(rest?.enden.b.merkmale).toEqual([riss(48.4)]);
+    expect(teil?.enden.b.merkmale).toEqual([riss(30)]);
+  });
+
+  it('kurzer Endriss am Gegenende bleibt nur im Rest', () => {
+    const ws = sauberesBrett('x', {
+      enden: { a: { winkel_grad: 0, merkmale: [] }, b: { winkel_grad: 0, merkmale: [riss(80)] } },
+    });
+    const [teil, rest] = schnitt(ws).werkstuecke;
+    expect(teil?.enden.b.merkmale).toEqual([]);
+    expect(rest?.enden.b.merkmale).toEqual([riss(80)]);
+  });
+
+  it('langer Endriss am Bezugsende reicht ins Reststück', () => {
+    const ws = sauberesBrett('x', {
+      enden: { a: { winkel_grad: 0, merkmale: [riss(700)] }, b: { winkel_grad: 0, merkmale: [] } },
+    });
+    const [teil, rest] = schnitt(ws).werkstuecke;
+    expect(teil?.enden.a.merkmale).toEqual([riss(600)]);
+    expect(rest?.enden.a.merkmale).toEqual([riss(98.4)]);
+  });
+
+  it('ohne Reststück (Rest ≤ Fuge) landet ein Gegenend-Riss im Teil', () => {
+    const v = endmerkmaleVerteilen([riss(5), { id: 'x.merkmal.ohne-laenge', wert: 1 }], 0, 1);
+    expect(v.bleibt).toEqual([{ id: 'x.merkmal.ohne-laenge', wert: 1 }]);
+    expect(v.durch).toEqual([riss(4)]);
   });
 });
 

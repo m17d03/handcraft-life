@@ -88,13 +88,13 @@ describe('Zustandsautomat Zuschnitt', () => {
 
     const messen = folge(begonnen, [{ art: 'bezugsendeWaehlen', ende: 'b' }]).zustand;
     expect(abgelehnt(messen, { art: 'anreissen' })).toBe('falsche-phase');
-    expect(abgelehnt(messen, { art: 'markierungSetzen', mm: Number.NaN })).toBe('ungueltiger-wert');
+    expect(abgelehnt(messen, { art: 'markierungSetzen', mm: Number.NaN })).toBe('ungueltige-aktion');
     expect(abgelehnt(messen, { art: 'blattVersatzSetzen', mm: 0 })).toBe('falsche-phase');
 
     const ansetzen = folge(messen, [{ art: 'markierungSetzen', mm: 600 }, { art: 'anreissen' }]).zustand;
-    expect(abgelehnt(ansetzen, { art: 'saegezug', seitenabweichung: 0, tempo: -1 })).toBe('ungueltiger-wert');
-    expect(abgelehnt(ansetzen, { art: 'saegezug', seitenabweichung: Number.NaN, tempo: 1 })).toBe('ungueltiger-wert');
-    expect(abgelehnt(ansetzen, { art: 'blattVersatzSetzen', mm: Number.POSITIVE_INFINITY })).toBe('ungueltiger-wert');
+    expect(abgelehnt(ansetzen, { art: 'saegezug', seitenabweichung: 0, tempo: -1 })).toBe('ungueltige-aktion');
+    expect(abgelehnt(ansetzen, { art: 'saegezug', seitenabweichung: Number.NaN, tempo: 1 })).toBe('ungueltige-aktion');
+    expect(abgelehnt(ansetzen, { art: 'blattVersatzSetzen', mm: Number.POSITIVE_INFINITY })).toBe('ungueltige-aktion');
     expect(abgelehnt(ansetzen, { art: 'bezugsendeWaehlen', ende: 'a' })).toBe('falsche-phase');
     expect(abgelehnt(ansetzen, { art: 'abliefern' })).toBe('falsche-phase');
 
@@ -212,7 +212,7 @@ describe('Ergebnis, Ausschuss, Abliefern', () => {
 
   it('Endriss am Bezugsende → Ausschuss: Abliefern unmöglich, Stück wird Reststück', () => {
     const brett = sauberesBrett('ws_test', {
-      enden: { a: { winkel_grad: 0, merkmale: [{ id: 'holz.merkmal.endriss', wert: 40 }] }, b: { winkel_grad: 0, merkmale: [] } },
+      enden: { a: { winkel_grad: 0, merkmale: [{ id: 'holz.merkmal.endriss', laenge_mm: 40 }] }, b: { winkel_grad: 0, merkmale: [] } },
     });
     const z = zuschnitt(bereit(brett), { ende: 'a' }).zustand;
     expect(z.arbeit?.ergebnis?.qualitaet.stufe).toBe('ausschuss');
@@ -224,6 +224,55 @@ describe('Ergebnis, Ausschuss, Abliefern', () => {
     expect(weiter.auftraege[0]?.status).toBe('angenommen');
     // Vom anderen Ende gemessen: Endriss bleibt im Rest → einwandfrei
     expect(zuschnitt(bereit(brett), { ende: 'b' }).zustand.arbeit?.ergebnis?.qualitaet.stufe).toBe('A');
+  });
+});
+
+describe('QA-Nacharbeit Runde 1', () => {
+  it('B1: Reststück 650 mm, Endriss 80 mm am Gegenende → Teil ist Ausschuss', () => {
+    const rest = sauberesBrett('ws_test', {
+      masse_mm: { l: 650, b: 140, d: 18 },
+      enden: { a: { winkel_grad: 0, merkmale: [] }, b: { winkel_grad: 0, merkmale: [{ id: 'holz.merkmal.endriss', laenge_mm: 80 }] } },
+      herkunft: 'rest',
+    });
+    const e = zuschnitt(bereit(rest), { ende: 'a', mm: 600, versatz: 0.8 }).zustand.arbeit?.ergebnis;
+    expect(e?.laenge_ist_mm).toBe(600);
+    expect(e?.qualitaet.stufe).toBe('ausschuss');
+    expect(e?.qualitaet.hauptursache).toBe('holz.merkmal.endriss');
+  });
+
+  it('B3: Aktionen mit ungültigen Laufzeitwerten werden abgelehnt', () => {
+    const z = folge(bereit(), [{ art: 'zuschnittBeginnen', werkstueckId: 'ws_test' }]).zustand;
+    const kaputt = (x: unknown) => abgelehnt(z, x as Aktion);
+    expect(kaputt({ art: 'bezugsendeWaehlen', ende: 'c' })).toBe('ungueltige-aktion');
+    expect(kaputt({ art: 'gibtEsNicht' })).toBe('ungueltige-aktion');
+    expect(kaputt(null)).toBe('ungueltige-aktion');
+    expect(kaputt({ art: 'markierungSetzen', mm: '600' })).toBe('ungueltige-aktion');
+    expect(kaputt({ art: 'stuetzen', an: 1 })).toBe('ungueltige-aktion');
+    expect(kaputt({ art: 'saegezug', seitenabweichung: 0 })).toBe('ungueltige-aktion');
+    expect(kaputt({ art: 'zuschnittBeginnen' })).toBe('ungueltige-aktion');
+    expect(kaputt({ art: 'auftragAnnehmen', auftragId: 3 })).toBe('ungueltige-aktion');
+    expect(kaputt({ art: 'materialKaufen' })).toBe('ungueltige-aktion');
+  });
+
+  it('B3: beschädigter Spielstand (Bezugsende "c") wirft beim letzten Zug nicht', () => {
+    const z = zuschnitt(bereit(), { zuege: zuege(7) }).zustand;
+    const kaputt = JSON.parse(JSON.stringify(z).replace('"bezugsende":"a"', '"bezugsende":"c"')) as Spielzustand;
+    expect(abgelehnt(kaputt, { art: 'saegezug', seitenabweichung: 0, tempo: 1 })).toBe('falsche-phase');
+  });
+
+  it('B5: Markierung muss ≥ 10 mm von beiden Enden liegen', () => {
+    const z = folge(bereit(), [
+      { art: 'zuschnittBeginnen', werkstueckId: 'ws_test' },
+      { art: 'bezugsendeWaehlen', ende: 'a' },
+    ]).zustand;
+    expect(abgelehnt(z, { art: 'markierungSetzen', mm: 0 })).toBe('markierung-ausserhalb');
+    expect(abgelehnt(z, { art: 'markierungSetzen', mm: 9.5 })).toBe('markierung-ausserhalb');
+    expect(abgelehnt(z, { art: 'markierungSetzen', mm: 1990.5 })).toBe('markierung-ausserhalb');
+    expect(folge(z, [{ art: 'markierungSetzen', mm: 10 }]).zustand.arbeit?.markierung_mm).toBe(10);
+    expect(folge(z, [{ art: 'markierungSetzen', mm: 1990 }]).zustand.arbeit?.markierung_mm).toBe(1990);
+    // Kleinstes Teil: 10 mm, Versatz −3 → 10 − 3,8 = 6,2 mm > 0
+    const kleinst = zuschnitt(bereit(), { mm: 10, versatz: -3 }).zustand.arbeit?.ergebnis;
+    expect(kleinst?.laenge_ist_mm).toBe(6.2);
   });
 });
 

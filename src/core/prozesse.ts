@@ -146,13 +146,17 @@ export function trennen(ctx: ProzessKontext, e: TrennenEingabe): ProzessErgebnis
 
   const vonA = e.bezugsende === 'a';
   const anderes = ws.enden[anderesEnde(e.bezugsende)];
+  // Endmerkmale mit Ausdehnung (z. B. Endriss) positionsgenau verteilen: was über den Schnitt reicht,
+  // liegt auch im anderen Stück (ab dessen Schnittende).
+  const bezugsVerteilung = endmerkmaleVerteilen(ws.enden[e.bezugsende].merkmale, ist, ist + fuge);
+  const gegenVerteilung = endmerkmaleVerteilen(anderes.merkmale, Math.max(restLaenge, 0), L - ist);
   const teil: Werkstueck = {
     id: e.teilId,
     materialId: ws.materialId,
     masse_mm: { ...ws.masse_mm, l: ist },
     enden: {
-      a: endeKopieren(ws.enden[e.bezugsende]),
-      b: { winkel_grad: drift, merkmale: [] },
+      a: { winkel_grad: ws.enden[e.bezugsende].winkel_grad, merkmale: bezugsVerteilung.bleibt },
+      b: { winkel_grad: drift, merkmale: gegenVerteilung.durch },
     },
     merkmale: vonA ? merkmaleUebertragen(ws.merkmale, 0, ist, false) : merkmaleUebertragen(ws.merkmale, L - ist, L, true),
     herkunft: 'schnitt',
@@ -163,7 +167,10 @@ export function trennen(ctx: ProzessKontext, e: TrennenEingabe): ProzessErgebnis
       id: e.restId,
       materialId: ws.materialId,
       masse_mm: { ...ws.masse_mm, l: restLaenge },
-      enden: { a: { winkel_grad: -drift, merkmale: [] }, b: endeKopieren(anderes) },
+      enden: {
+        a: { winkel_grad: -drift, merkmale: bezugsVerteilung.durch },
+        b: { winkel_grad: anderes.winkel_grad, merkmale: gegenVerteilung.bleibt },
+      },
       merkmale: vonA
         ? merkmaleUebertragen(ws.merkmale, ist + fuge, L, false)
         : merkmaleUebertragen(ws.merkmale, 0, restLaenge, true),
@@ -217,6 +224,26 @@ export function trennen(ctx: ProzessKontext, e: TrennenEingabe): ProzessErgebnis
   return { ...ergebnis, detail: { driftVerlauf } };
 }
 
-function endeKopieren(ende: Werkstueck['enden']['a']): Werkstueck['enden']['a'] {
-  return { winkel_grad: ende.winkel_grad, merkmale: ende.merkmale.map((m) => ({ ...m })) };
+/**
+ * Merkmale eines Endes auf zwei Stücke verteilen. `stueck` = Länge des Stücks an diesem Ende,
+ * `abstand` = Länge bis zum Beginn des anderen Stücks (Stück + Fuge). Merkmale ohne `laenge_mm`
+ * bleiben am Ende; mit `laenge_mm` werden sie aufs Stück gekürzt und reichen ggf. ins andere Stück.
+ */
+export function endmerkmaleVerteilen(
+  merkmale: readonly Merkmal[],
+  stueck: number,
+  abstand: number,
+): { bleibt: Merkmal[]; durch: Merkmal[] } {
+  const bleibt: Merkmal[] = [];
+  const durch: Merkmal[] = [];
+  for (const m of merkmale) {
+    if (m.laenge_mm === undefined) {
+      bleibt.push({ ...m });
+      continue;
+    }
+    if (stueck > 0) bleibt.push({ ...m, laenge_mm: runden3(Math.min(m.laenge_mm, stueck)) });
+    const rest = runden3(m.laenge_mm - abstand);
+    if (rest > 0) durch.push({ ...m, laenge_mm: rest });
+  }
+  return { bleibt, durch };
 }

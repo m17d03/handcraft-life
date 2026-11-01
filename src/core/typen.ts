@@ -28,10 +28,14 @@ export interface MaterialDef {
   werte: Record<string, number>;
 }
 
-/** Merkmal an einem Werkstück oder Ende, z. B. Ast (`pos_mm` ab Ende a) oder Endriss (`wert` = Länge mm). */
+/**
+ * Merkmal an einem Werkstück oder Ende, z. B. Ast (`pos_mm` ab Ende a) oder Endriss am Ende
+ * (`laenge_mm` = Ausdehnung vom Ende ins Stück; wird beim Trennen positionsgenau verteilt).
+ */
 export interface Merkmal {
   id: InhaltsId;
   pos_mm?: number;
+  laenge_mm?: number;
   wert?: number;
 }
 
