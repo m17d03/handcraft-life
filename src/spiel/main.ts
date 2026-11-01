@@ -8,7 +8,8 @@ import '../style.css';
 import { neuerSpielzustand } from '../core/zustand';
 import { IndexedDbAblage, Spielstand, type LadeAusgang } from '../core/save';
 import { isDebugEnabled } from '../debug/fps';
-import { installDebugOverlay, setzeDebugZeile } from '../debug/overlay';
+import { debugOverlaySchalten, debugOverlaySichtbar, fehlerSammeln, setzeDebugZeile } from '../debug/overlay';
+import { bindeDebugSchalter, debugInSitzung, debugInSitzungMerken } from '../debug/schalter';
 import { standardKatalog } from '../modules';
 import { installierePerf, PerfMonitor, perfGewuenscht } from '../perf/monitor';
 import { leseAufloesungsParameter } from '../render/aufloesung';
@@ -34,7 +35,9 @@ async function start(): Promise<void> {
   const debug = debugUrl || import.meta.env.DEV;
   const body = document.body;
   body.dataset['state'] = 'loading';
-  if (debugUrl) installDebugOverlay();
+  // Overlay: mit ?debug=1 oder per Debug-Schalter (5× auf die Geldanzeige, Ticket 016); gilt für die Sitzung.
+  fehlerSammeln();
+  if (debugUrl || debugInSitzung() === true) debugOverlaySchalten(true, body, { kompakt: true });
 
   const status = document.querySelector<HTMLElement>('#spiel-status');
   const canvas = document.querySelector<HTMLCanvasElement>('#scene');
@@ -116,8 +119,16 @@ async function start(): Promise<void> {
     spielstand,
     zustand,
     ladeAusgang: ausgang,
-    ...(debugUrl ? { debugZeile: setzeDebugZeile } : {}),
+    debugZeile: setzeDebugZeile,
   });
+  const geld = hud.element.querySelector<HTMLElement>('.hud-geld');
+  if (geld) {
+    bindeDebugSchalter(geld, () => {
+      const an = !debugOverlaySichtbar();
+      debugOverlaySchalten(an, body, { kompakt: true });
+      debugInSitzungMerken(an);
+    });
+  }
   if (debug) window.__spiel = spiel;
   // Speicher-Persistenz (ADR 0003): versuchen, Ergebnis im Debug-Overlay (Spielstand.status().dauerhaft)
   void spielstand.persist().then((e) => {

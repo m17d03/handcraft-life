@@ -4,6 +4,7 @@
 
 import './hud.css';
 import { AKTIONEN, type Befehl, type BefehlsEmpfaenger } from '../input/befehle';
+import { endpruefungEinpassen } from './endpruefung';
 import type { BildschirmPos, ErgebnisDaten, Hud, HudModus } from './hud-typen';
 import {
   BLATT_RASTER_MM,
@@ -407,6 +408,16 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
     stuetzTaste.dispose();
   });
 
+  // ---------- Platz unter dem Hinweis (Ticket 016, QA N2/N4) ----------
+  // Hinweise brechen um und werden dadurch unterschiedlich hoch: Ansetzen-Vergrösserung und Nahansicht
+  // richten sich nach seiner Unterkante.
+  const hinweisEl = q(root, '.hud-hinweis');
+  const platzAbgleichen = (): void => {
+    const b = hinweisEl.hidden ? null : hinweisEl.getBoundingClientRect();
+    root.style.setProperty('--hinweis-unten', `${String(b && b.height > 0 ? Math.ceil(b.bottom) : 0)}px`);
+    endpruefungEinpassen(root);
+  };
+
   // ---------- Modus ----------
   const sichtbarkeit = (): void => {
     for (const el of root.querySelectorAll<HTMLElement>('[data-nur]')) {
@@ -441,11 +452,13 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
       root.dataset['modus'] = m;
       griffStandard();
       sichtbarkeit();
+      platzAbgleichen(); // Hinweis sitzt je Modus anders (Sägen: linke Hälfte)
     },
     auftragAnzeigen(text) {
       const el = q(root, '.hud-auftrag');
       el.hidden = text === null;
       el.textContent = text ?? '';
+      platzAbgleichen();
     },
     messwertAnzeigen(mm) {
       messwert = mm;
@@ -489,6 +502,7 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
       el.classList.toggle('warnung', art === 'warnung');
       el.hidden = text === null;
       el.textContent = text ?? '';
+      platzAbgleichen();
     },
     aktionstaste(taste) {
       const b = qTaste(root, '.hud-aktionstaste');
@@ -516,6 +530,7 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
 
   const beiGroesse = (): void => {
     safeArea();
+    platzAbgleichen();
     if (!ziehtMassband) griffStandard();
   };
   window.addEventListener('resize', beiGroesse);
