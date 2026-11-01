@@ -1,0 +1,50 @@
+{
+  "format": "handcraft-life-save",
+  "huelle": 1,
+  "spielVersion": "0.0.1",
+  "gespeichert": "2026-11-01T12:00:00.000Z",
+  "kern": {
+    "schema": 1,
+    "daten": {
+      "inventar": {
+        "geld": 46,
+        "schulden": 0,
+        "werkstuecke": [
+          {
+            "id": "ws_4",
+            "materialId": "holz.material.fichte-brett-2000",
+            "masse_mm": {
+              "l": 1397.463,
+              "b": 140,
+              "d": 18
+            },
+            "enden": {
+              "a": {
+                "winkel_grad": 0,
+                "merkmale": []
+              },
+              "b": {
+                "winkel_grad": -0.572943829874472,
+                "merkmale": [
+                  {
+                    "id": "holz.merkmal.endriss",
+                    "laenge_mm": 73
+                  }
+                ]
+              }
+            },
+            "merkmale": [],
+            "herkunft": "rest"
+          }
+        ],
+        "gegenstaende": [],
+        "werkzeuge": [
+          {
+            "werkzeugId": "kern.werkzeug.massband"
+          },
+          {
+            "werkzeugId": "holz.werkzeug.fuchsschwanz"
+          }
+        ]
+      },
+      "auft
