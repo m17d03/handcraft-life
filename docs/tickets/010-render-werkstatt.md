@@ -3,7 +3,7 @@ id: 010
 titel: Render-Grundgerüst mit Three.js – Werkstatt-Szene Stil A, Ich-Kamera, Arbeitsansicht, Picking, __perf
 agent: engine-engineer
 meilenstein: Phase 1 – Vertical Slice 0.1
-status: open
+status: done
 reifegrad: Implementiert
 blocked_by: []
 branch: ticket/010-render
@@ -48,20 +48,25 @@ export interface WerkstattView {
 ```
 
 ## Abnahmekriterien
-- [ ] `/spiel/` lädt Szene: Raum, Werkbank, Brett (prozedurale Holztextur Fichte), Säge/Massband als Primitive-
+- [x] `/spiel/` lädt Szene: Raum, Werkbank, Brett (prozedurale Holztextur Fichte), Säge/Massband als Primitive-
       Platzhalter (Assets folgen in 012/013), Licht Stil A (Sonne + Umgebung), ein Schatten nur im Werkbankbereich
-- [ ] Alle View-API-Methoden implementiert und per `window.__view` im Debug-Modus erreichbar; Unit-Tests für
+- [x] Alle View-API-Methoden implementiert und per `window.__view` im Debug-Modus erreichbar; Unit-Tests für
       Koordinatenumrechnung (mm ↔ Welt) ohne WebGL
-- [ ] Ich-Kamera quer, Pixeldichte ≤ 2, MSAA; dynamische Auflösung aus Spike übernommen
-- [ ] `window.__perf()` (PerfSnapshot v1) in `src/perf/` inkl. der zwei QA-Befunde behoben; Debug-Overlay aus
+- [x] Ich-Kamera quer, Pixeldichte ≤ 2, MSAA; dynamische Auflösung aus Spike übernommen
+- [x] `window.__perf()` (PerfSnapshot v1) in `src/perf/` inkl. der zwei QA-Befunde behoben; Debug-Overlay aus
       `src/debug/` eingebunden
-- [ ] Budgets: Draw Calls < 80, Dreiecke < 150 000, Download `/spiel/` < 1 MB gzip ohne Assets
-- [ ] Kontextverlust (`WEBGL_lose_context`) → Szene stellt sich wieder her (S5)
-- [ ] E2E (WebKit-tauglich): Seite lädt ohne Fehler, Canvas da, `__perf()` liefert Werte, `pick` auf Brett-Mitte → 'brett'
-- [ ] Hochformat: Hinweis „Bitte quer halten“ (einfaches DOM-Element; das endgültige HUD macht 011)
-- [ ] `npm run check` + E2E grün; Startseite verlinkt „Spielen“
+- [x] Budgets: Draw Calls < 80, Dreiecke < 150 000, Download `/spiel/` < 1 MB gzip ohne Assets
+- [x] Kontextverlust (`WEBGL_lose_context`) → Szene stellt sich wieder her (S5)
+- [x] E2E (WebKit-tauglich): Seite lädt ohne Fehler, Canvas da, `__perf()` liefert Werte, `pick` auf Brett-Mitte → 'brett'
+- [x] Hochformat: Hinweis „Bitte quer halten“ (einfaches DOM-Element; das endgültige HUD macht 011)
+- [x] `npm run check` + E2E grün; Startseite verlinkt „Spielen“
 
 ## Nicht Teil dieses Tickets
 Touch-Eingabe (011), Spielregeln (008), echte Modelle (012), Verdrahtung (013).
 
 ## Protokoll
+- 2026-11-01 engine-engineer (nach API-Limit fortgesetzt): src/render, src/perf, /spiel/. Download /spiel/ 156 kB gzip,
+  ≤ 28 Draw Calls, ~2 500 Dreiecke. View-API unverändert, Ergänzungen: WerkstattViewDebug, erzeugeWerkstattView (async).
+- QA Runde 1: NACHARBEIT (klein) – Hervorhebung färbte Regal mit, Massband verdeckte Strich, Ziffern bei Ende b kopfüber,
+  GL-Warnungen nach Kontextverlust; Stil A „alles orange“. Behoben (b22d2f4).
+- Director: Nachprüfung auf main: 207 Unit, 49 E2E grün (Chromium). Rest Stil A (Lichtfleck auf Werkbank) → Ticket 013.
