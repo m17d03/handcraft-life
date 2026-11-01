@@ -38,5 +38,6 @@ export default tseslint.config(
     files: ['src/core/save/**/*.ts'],
     rules: { 'no-restricted-globals': 'off' },
   },
+  { files: ['tools/**/*.mjs'], languageOptions: { globals: { ...globals.node } }, ...tseslint.configs.disableTypeChecked },
   { files: ['eslint.config.js'], ...tseslint.configs.disableTypeChecked },
 );
