@@ -13,7 +13,7 @@ import { arbeitsPose, IchKamera, Kamerafahrt, type KameraPose } from './ich-kame
 import { add, clamp, forwardFromYawPitch, projectToScreen, screenRay, type Projektion } from './mathe';
 import { pickNaechstes } from './picking';
 import type { WerkstattViewDebug, WerkstattViewZustand } from './view-api';
-import { WerkstattSzene, type EndRisse, type SaegeZustand } from './werkstatt-szene';
+import { WerkstattSzene, type EndRisse, type EndWinkel, type SaegeZustand } from './werkstatt-szene';
 import { ARBEITSANSICHT, BEGEHBAR, BRETT, BRETT_OBEN_Y, KAMERA } from './werkstatt-layout';
 
 export const SZENEN_ID = 'werkstatt';
@@ -31,6 +31,8 @@ export interface WerkstattOptionen {
    * werden keine Modelle geladen (Platzhalter aus Ticket 010).
    */
   readonly assetBasis?: string;
+  /** Dauer der Kamerafahrt (ms); Standard ARBEITSANSICHT.fahrtMs. Tests (`?test=1`) setzen 0. */
+  readonly kamerafahrtMs?: number;
   /** Ladefehler der Assets (Szene läuft mit Platzhaltern weiter). */
   readonly beiAssetFehler?: (fehler: unknown) => void;
 }
@@ -44,10 +46,11 @@ class WerkstattViewThree implements WerkstattViewDebug {
   private holz: HolzTexturen | null = null;
   private assets: WerkstattAssets | null = null;
   private risse: EndRisse = { a: null, b: null };
+  private winkel: EndWinkel = { a: 0, b: 0 };
   private readonly anisotropie: number;
   private readonly kamera: THREE.PerspectiveCamera;
   private readonly ich: IchKamera;
-  private readonly fahrt = new Kamerafahrt(ARBEITSANSICHT.fahrtMs);
+  private readonly fahrt: Kamerafahrt;
   private readonly dyn: DynamischeAufloesung | null;
   private readonly maxDichte: number;
   private readonly perf: PerfMelder | null;
@@ -78,6 +81,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     private readonly opt: WerkstattOptionen,
   ) {
     this.perf = opt.perf ?? null;
+    this.fahrt = new Kamerafahrt(opt.kamerafahrtMs ?? ARBEITSANSICHT.fahrtMs);
     const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, stencil: false, powerPreference: 'high-performance' });
     this.renderer = r;
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -214,6 +218,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
       saege: this.saege,
       hervorgehoben: this.hervor,
       risse: this.risse,
+      winkel: this.winkel,
     });
     if (schatten) this.renderer.shadowMap.needsUpdate = true;
     this.feedbackOffen = true;
@@ -289,6 +294,12 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.anwenden(true);
   }
 
+  endwinkelZeigen(winkel: { a: number; b: number }): void {
+    const w = (v: number): number => (Number.isFinite(v) ? clamp(v, -10, 10) : 0);
+    this.winkel = { a: w(winkel.a), b: w(winkel.b) };
+    this.anwenden(true);
+  }
+
   endrisseZeigen(risse: { a: number | null; b: number | null }): void {
     const wert = (v: number | null): number | null => (v === null || !Number.isFinite(v) || v <= 0 ? null : clamp(v, 1, 4000));
     this.risse = { a: wert(risse.a), b: wert(risse.b) };
@@ -339,6 +350,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
       kontextVerloren: this.verloren,
       assets: this.szene.mitAssets ? 'modelle' : 'platzhalter',
       risse: { ...this.risse },
+      winkel: { ...this.winkel },
     };
   }
 

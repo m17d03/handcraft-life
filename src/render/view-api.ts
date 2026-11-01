@@ -47,6 +47,8 @@ export interface WerkstattViewZustand {
   assets: 'modelle' | 'platzhalter';
   /** Angezeigte Endrisse (mm ab Ende a bzw. b). */
   risse: { a: number | null; b: number | null };
+  /** Angezeigte Endwinkel (Grad, echt; gezeichnet überzeichnet). */
+  winkel: { a: number; b: number };
 }
 
 /**
@@ -55,6 +57,8 @@ export interface WerkstattViewZustand {
  */
 export interface WerkstattViewZusatz {
   endrisseZeigen(risse: { a: number | null; b: number | null }): void;
+  /** Winkelfehler der Werksenden a/b in Grad (Vorzeichen wie im Kern); gezeichnet ×3 überzeichnet. */
+  endwinkelZeigen(winkel: { a: number; b: number }): void;
 }
 
 export interface WerkstattViewDebug extends WerkstattView, WerkstattViewZusatz {

@@ -9,16 +9,18 @@
 import { textFuer, type Katalog } from '../core/modul';
 import type { LadeAusgang, Spielstand } from '../core/save';
 import { angenommenerAuftrag, ausfuehren, werkstueckImLager, type Aktion, type AktionsErgebnis } from '../core/zuschnitt';
-import type { Spielzustand } from '../core/zustand';
+import { neuerSpielzustand, type Spielzustand } from '../core/zustand';
 import { AKTIONEN, type Befehl } from '../input/befehle';
 import type { WerkstattViewDebug } from '../render/view-api';
 import type { Hud, HudModus } from '../ui/hud-typen';
+import { endpruefungSchliessen, endpruefungZeigen } from '../ui/endpruefung';
 import { installHinweisPruefen } from '../ui/installhinweis';
 import {
   aktuellerAuftrag,
   auftragText,
   bedarfMm,
   endeAusMm,
+  endPruefen,
   endrisse,
   ergebnisKarte,
   grundText,
@@ -61,9 +63,12 @@ export class Spiel implements SpielDebug {
   private anDerBank = false;
   private massMm = 0;
   private saegenFrei = false;
-  private kurzText: string | null = null;
-  private kurzTimer = 0;
+  /** Meldungen werden angestellt, nicht ersetzt; Warnungen haben Vorrang (QA F4). */
+  private meldungen: { text: string; warnung: boolean; ms: number }[] = [];
+  private meldungTimer = 0;
   private hinweisJetzt: string | null = null;
+  /** Gerade geprüftes Brettende (Endprüfung offen) und bereits geprüfte Enden. */
+  private pruefEnde: 'a' | 'b' | null = null;
   private modusJetzt: HudModus = 'erkunden';
   private ziel: string | null = null;
   private letzterPick = 0;
@@ -107,7 +112,7 @@ export class Spiel implements SpielDebug {
       massMm: this.massMm,
       saegenFreigegeben: this.saegenFrei,
       hudModus: this.modusJetzt,
-      hinweis: this.hinweisJetzt,
+      hinweis: this.hinweisJetzt === null ? null : this.hinweisJetzt.slice(0, this.hinweisJetzt.lastIndexOf('|')) || null,
       aktionstaste: this.ziel !== null && !this.anDerBank,
     };
   }
@@ -222,7 +227,7 @@ export class Spiel implements SpielDebug {
     if (!auftrag) {
       const angeboten = this.z.auftraege.find((a) => a.status === 'angeboten');
       if (!angeboten) {
-        this.kurz('Gerade kein Auftrag.');
+        this.kurz('Gerade kein Auftrag.', true);
         return false;
       }
       if (this.tun({ art: 'auftragAnnehmen', auftragId: angeboten.id }).grund !== undefined) return false;
@@ -237,7 +242,7 @@ export class Spiel implements SpielDebug {
       const r = this.tun({ art: 'materialKaufen', materialId: vorlage.materialId }, true);
       const kauf = r.ereignisse.find((e) => e.art === 'gekauft');
       if (r.grund !== undefined || kauf?.art !== 'gekauft') {
-        this.kurz(grundText(r.grund ?? ''));
+        this.kurz(grundText(r.grund ?? ''), true);
         return false;
       }
       stueck = werkstueckImLager(this.z, kauf.werkstueckId);
@@ -248,12 +253,12 @@ export class Spiel implements SpielDebug {
     if (!stueck) return false;
     const r = this.tun({ art: 'zuschnittBeginnen', werkstueckId: stueck.id });
     if (r.grund !== undefined) {
-      this.kurz(grundText(r.grund));
+      this.kurz(grundText(r.grund), true);
       return false;
     }
     this.massMm = 0;
     this.saegenFrei = false;
-    if (meldung) this.kurz(meldung, 2600);
+    if (meldung) this.kurz(meldung, false, 2600);
     return true;
   }
 
@@ -284,19 +289,41 @@ export class Spiel implements SpielDebug {
     // Vor der Wahl zählt die View ab Ende a (Bezugsende null)
     const mm = this.o.view.bildschirmNachBrettMm(x, y);
     if (mm === null) {
-      this.kurz('Tippe direkt auf das Brett, nahe an einem Ende.');
+      this.kurz('Tippe direkt auf das Brett, nahe an einem Ende.', true);
       return;
     }
-    const ende = endeAusMm(mm, ws.masse_mm.l);
-    this.tun({ art: 'bezugsendeWaehlen', ende });
-    this.massMm = 0;
-    this.darstellen();
+    this.endePruefen(endeAusMm(mm, ws.masse_mm.l));
+  }
+
+  /** Endprüfung mit Anschlagwinkel öffnen; gewählt wird erst mit „Von hier messen“ (QA F1). */
+  private endePruefen(ende: 'a' | 'b'): void {
+    const a = this.z.arbeit;
+    const ws = a ? werkstueckImLager(this.z, a.werkstueckId) : undefined;
+    if (a?.phase !== 'bezugsende' || !ws) return;
+    this.pruefEnde = ende;
+    const befund = endPruefen(ws, ende);
+    endpruefungZeigen(this.o.hud.element, { seite: ende === 'a' ? 'links' : 'rechts', ...befund }, {
+      beiWahl: () => {
+        endpruefungSchliessen(this.o.hud.element);
+        this.pruefEnde = null;
+        this.tun({ art: 'bezugsendeWaehlen', ende });
+        this.massMm = 0;
+        this.darstellen();
+      },
+      beiAnderesEnde: () => {
+        this.endePruefen(ende === 'a' ? 'b' : 'a');
+      },
+      beiZu: () => {
+        endpruefungSchliessen(this.o.hud.element);
+        this.pruefEnde = null;
+      },
+    });
   }
 
   private massbandVerschieben(deltaMm: number): void {
     const a = this.z.arbeit;
     if (a?.phase !== 'messen' && a?.phase !== 'anreissen') {
-      if (a?.phase === 'bezugsende') this.kurz('Zuerst ein Brettende antippen.');
+      if (a?.phase === 'bezugsende') this.kurz('Zuerst ein Brettende prüfen und wählen.', true);
       return;
     }
     const ws = werkstueckImLager(this.z, a.werkstueckId);
@@ -326,7 +353,7 @@ export class Spiel implements SpielDebug {
     if (a?.phase !== 'messen' && a?.phase !== 'anreissen') return;
     const r = this.tun({ art: 'markierungSetzen', mm: this.massMm });
     if (r.grund !== undefined) {
-      this.kurz(grundText(r.grund));
+      this.kurz(grundText(r.grund), true);
       this.darstellen();
       return;
     }
@@ -338,7 +365,7 @@ export class Spiel implements SpielDebug {
   private abliefern(): void {
     const r = this.tun({ art: 'abliefern' }, true);
     if (r.grund !== undefined) {
-      this.kurz(grundText(r.grund));
+      this.kurz(grundText(r.grund), true);
       return;
     }
     const e = r.ereignisse.find((x) => x.art === 'abgeliefert');
@@ -349,6 +376,7 @@ export class Spiel implements SpielDebug {
     const neu = auftragText(aktuellerAuftrag(this.z));
     this.kurz(
       `Abgeliefert: +${String(erloes - getilgt)} G${getilgt > 0 ? ` (${String(getilgt)} G Schulden getilgt)` : ''}.${neu ? ` Neuer Auftrag: ${neu}` : ''}`,
+      false,
       4500,
     );
     this.darstellen();
@@ -367,14 +395,28 @@ export class Spiel implements SpielDebug {
 
   // ------------------------------------------------------------------ Darstellung
 
-  private kurz(text: string, ms = 2400): void {
-    this.kurzText = text;
-    window.clearTimeout(this.kurzTimer);
-    this.kurzTimer = window.setTimeout(() => {
-      this.kurzText = null;
-      this.hinweisSetzen();
-    }, ms);
+  /** Meldung anstellen (Warnung: vor alle Infos). Gleiche Meldung wird nicht doppelt angestellt. */
+  private kurz(text: string, warnung = false, ms = 2400): void {
+    if (this.meldungen.some((m) => m.text === text)) return;
+    const m = { text, warnung, ms };
+    if (warnung) {
+      const ersteInfo = this.meldungen.findIndex((x, i) => i > 0 && !x.warnung);
+      if (ersteInfo === -1) this.meldungen.push(m);
+      else this.meldungen.splice(ersteInfo, 0, m);
+    } else this.meldungen.push(m);
+    if (this.meldungen.length === 1) this.meldungStarten();
     this.hinweisSetzen();
+  }
+
+  private meldungStarten(): void {
+    window.clearTimeout(this.meldungTimer);
+    const m = this.meldungen[0];
+    if (!m) return;
+    this.meldungTimer = window.setTimeout(() => {
+      this.meldungen.shift();
+      this.meldungStarten();
+      this.hinweisSetzen();
+    }, m.ms);
   }
 
   private stueckAufDerBank(): ReturnType<typeof werkstueckImLager> {
@@ -383,13 +425,23 @@ export class Spiel implements SpielDebug {
     return stueckWaehlen(this.z, bedarfMm(aktuellerAuftrag(this.z)));
   }
 
+  /** Sichtbarer Hinweis: Warn-Meldung > Schritt-Warnung > Info-Meldung > Schritt-Hinweis (QA F4). */
   private hinweisSetzen(): void {
-    const text =
-      this.kurzText ??
-      schrittHinweis(this.z, { anDerBank: this.anDerBank, massMm: this.massMm, saegenFreigegeben: this.saegenFrei, stueck: this.stueckAufDerBank(), zielWerkbank: this.ziel !== null });
-    if (text === this.hinweisJetzt) return;
-    this.hinweisJetzt = text;
-    this.o.hud.hinweis(text);
+    const schritt = schrittHinweis(this.z, {
+      anDerBank: this.anDerBank,
+      massMm: this.massMm,
+      saegenFreigegeben: this.saegenFrei,
+      stueck: this.stueckAufDerBank(),
+      zielWerkbank: this.ziel !== null,
+    });
+    const m = this.meldungen[0];
+    const sichtbar = m?.warnung === true ? m : schritt?.warnung === true ? schritt : (m ?? schritt);
+    // Im Ergebnis spricht die Karte; keine Meldung darüber (QA F2)
+    const text = this.modusJetzt === 'ergebnis' ? null : (sichtbar?.text ?? null);
+    const schluessel = `${text ?? ''}|${String(sichtbar?.warnung ?? false)}`;
+    if (schluessel === this.hinweisJetzt) return;
+    this.hinweisJetzt = schluessel;
+    this.o.hud.hinweis(text, sichtbar?.warnung === true ? 'warnung' : 'info');
   }
 
   /** Zeichnet View und HUD vollständig aus dem Spielzustand (plus den drei lokalen UI-Werten). */
@@ -414,11 +466,16 @@ export class Spiel implements SpielDebug {
       const riss = endrisse(teil);
       const rissBezug = riss.a ?? riss.b;
       view.endrisseZeigen(a.bezugsende === 'b' ? { a: null, b: rissBezug } : { a: rissBezug, b: null });
+      // Werksenden behalten ihren Winkel: Bezugsende am Teil (Ende a), Gegenende am Rest (Ende b)
+      const wBezug = teil?.enden.a.winkel_grad ?? 0;
+      const wGegen = rest?.enden.b.winkel_grad ?? 0;
+      view.endwinkelZeigen(a.bezugsende === 'b' ? { a: wGegen, b: wBezug } : { a: wBezug, b: wGegen });
     } else {
       const ws = this.stueckAufDerBank();
       view.brettZeigen(ws?.masse_mm.l ?? 2000, a?.bezugsende ?? null);
       view.schnittErgebnisZeigen(null);
       view.endrisseZeigen(endrisse(ws));
+      view.endwinkelZeigen({ a: ws?.enden.a.winkel_grad ?? 0, b: ws?.enden.b.winkel_grad ?? 0 });
     }
     const phase = a?.phase ?? null;
     const angerissen = phase === 'ansetzen' || phase === 'saegen' || phase === 'ergebnis';
@@ -428,6 +485,11 @@ export class Spiel implements SpielDebug {
     if (a && (phase === 'ansetzen' || phase === 'saegen')) {
       view.saegeZeigen({ versatzMm: a.blattversatz_mm, tiefe01: Math.min(1, a.zuege.length / gesamt), driftGrad: a.drift_grad });
     } else view.saegeZeigen(null);
+
+    if (this.pruefEnde !== null && (phase !== 'bezugsende' || !this.anDerBank)) {
+      endpruefungSchliessen(hud.element);
+      this.pruefEnde = null;
+    }
 
     // ---- HUD
     const modus = hudModusFuer(a, this.anDerBank, this.saegenFrei);
@@ -500,13 +562,10 @@ export class Spiel implements SpielDebug {
   private bannerZeigen(ausgang: LadeAusgang): void {
     const modus = this.o.spielstand.status().modus;
     let text: string | null = null;
-    let neuBeginnen = false;
     if (ausgang.art === 'defekt') {
       text = 'Der Spielstand ist beschädigt. Er bleibt als Sicherung erhalten – bis du neu beginnst, wird nicht gespeichert.';
-      neuBeginnen = true;
     } else if (ausgang.art === 'lesefehler') {
       text = 'Der Spielstand konnte nicht gelesen werden. Du spielst ohne Speichern.';
-      neuBeginnen = true;
     } else if (ausgang.art === 'zuNeu') {
       text = 'Der Spielstand stammt aus einer neueren Version und wird nicht überschrieben. Du spielst ohne Speichern.';
     } else if (modus === 'nurLesend') {
@@ -537,10 +596,11 @@ export class Spiel implements SpielDebug {
     const p = document.createElement('span');
     p.textContent = `⚠ ${text}`;
     el.append(p);
-    if (neuBeginnen) {
+    // „Neu beginnen“ für alle Fälle (QA F5), erst nach Rückfrage; der alte Stand bleibt als Sicherung
+    const taste = (beschriftung: string, primaer: boolean): HTMLButtonElement => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = 'Neu beginnen';
+      b.textContent = beschriftung;
       Object.assign(b.style, {
         flex: 'none',
         minWidth: '44px',
@@ -548,21 +608,50 @@ export class Spiel implements SpielDebug {
         padding: '0 12px',
         font: 'inherit',
         fontWeight: '600',
-        color: '#1f1a15',
-        background: '#d9a35b',
-        border: 'none',
+        color: primaer ? '#1f1a15' : '#f3e9dc',
+        background: primaer ? '#d9a35b' : 'transparent',
+        border: primaer ? 'none' : '1.5px solid #d9a35b',
         borderRadius: '10px',
       } satisfies Partial<CSSStyleDeclaration>);
-      b.addEventListener('click', () => {
-        void this.o.spielstand.neuBeginnen().then((ok) => {
-          if (!ok) return;
-          el.remove();
-          this.banner = null;
-          this.sofortSpeichern();
-        });
+      return b;
+    };
+    const neu = taste('Neu beginnen', true);
+    const ja = taste('Ja, neu beginnen', true);
+    const nein = taste('Abbrechen', false);
+    ja.hidden = true;
+    nein.hidden = true;
+    neu.addEventListener('click', () => {
+      p.textContent = '⚠ Wirklich neu beginnen? Der alte Spielstand bleibt als Sicherung erhalten.';
+      neu.hidden = true;
+      ja.hidden = false;
+      nein.hidden = false;
+    });
+    nein.addEventListener('click', () => {
+      p.textContent = `⚠ ${text}`;
+      neu.hidden = false;
+      ja.hidden = true;
+      nein.hidden = true;
+    });
+    const warNurLesend = modus === 'nurLesend';
+    ja.addEventListener('click', () => {
+      void this.o.spielstand.neuBeginnen().then((ok) => {
+        if (!ok) {
+          p.textContent = '⚠ Neu beginnen ging nicht – der Spielstand ist nicht erreichbar.';
+          return;
+        }
+        el.remove();
+        this.banner = null;
+        if (warNurLesend) {
+          // Der geladene (neuere) Stand wird nicht weitergeführt
+          this.z = neuerSpielzustand(this.o.katalog, Math.floor(Math.random() * 2 ** 32));
+          this.anDerBank = false;
+          this.o.view.arbeitsansicht(false);
+        }
+        this.sofortSpeichern();
+        this.darstellen();
       });
-      el.append(b);
-    }
+    });
+    el.append(neu, ja, nein);
     wurzel.append(el);
     this.banner = el;
   }
@@ -570,7 +659,7 @@ export class Spiel implements SpielDebug {
   dispose(): void {
     this.beendet = true;
     cancelAnimationFrame(this.raf);
-    window.clearTimeout(this.kurzTimer);
+    window.clearTimeout(this.meldungTimer);
     for (const f of this.aufraeumen) f();
     this.banner?.remove();
   }

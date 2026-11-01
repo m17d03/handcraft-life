@@ -96,14 +96,44 @@ export const STUFEN_TEXT: Readonly<Record<Stufe, string>> = {
   ausschuss: 'Ausschuss',
 };
 
-/** Ergebniskarte aus dem Kern-Ergebnis: Stufe, Q, die eine wichtigste Ursache mit Ist-Länge, Preis. */
+
+const vorzeichenZahl = (v: number, nachkomma: number): string =>
+  `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toFixed(nachkomma).replace('.', ',')}`;
+
+/**
+ * Ergebniskarte aus dem Kern-Ergebnis: Stufe, Q, die eine wichtigste Ursache mit Ist-Länge, Preis.
+ * Liegt die Länge ausserhalb der Auftragstoleranz (Stufe gekappt), steht das zuerst da (QA F3).
+ */
 export function ergebnisKarte(katalog: Katalog, z: Spielzustand): ErgebnisDaten | null {
   const e = z.arbeit?.ergebnis;
   if (!e) return null;
-  const soll = sollMm(aktuellerAuftrag(z));
+  const auftrag = aktuellerAuftrag(z);
+  const soll = sollMm(auftrag);
   const ursache = textFuer(katalog, e.qualitaet.hauptursache, e.qualitaet.hauptursacheWert);
   const ist = `Ist ${zahl(e.laenge_ist_mm)} mm${soll === null ? '' : ` (Soll ${zahl(soll)})`}`;
-  return { stufe: STUFEN_TEXT[e.qualitaet.stufe], q: e.qualitaet.q, hauptursache: `${ist} · ${ursache}`, preis: e.preis };
+  const tol = auftrag?.toleranz['delta_l_mm'];
+  const abw = e.messwerte['abweichung_l_mm'];
+  const ausserhalb =
+    tol !== undefined && abw !== undefined && Math.abs(abw) > tol && e.qualitaet.stufe !== 'ausschuss'
+      ? `Ausserhalb der Toleranz: ${vorzeichenZahl(abw, 2)} mm (erlaubt ±${zahl(tol)}) · `
+      : '';
+  return { stufe: STUFEN_TEXT[e.qualitaet.stufe], q: e.qualitaet.q, hauptursache: `${ist} · ${ausserhalb}${ursache}`, preis: e.preis };
+}
+
+/** Spalt (mm) am Anschlagwinkel, ab dem ein Ende als schief gilt. Gute Werksenden: ≤ 0,6 mm (Kern ±0,3 mm). */
+export const RECHTWINKLIG_BIS_MM = 0.8;
+
+export interface EndBefund {
+  /** Spalt zwischen Anschlagwinkel und Stirn über die ganze Brettbreite (mm). */
+  spaltMm: number;
+  rechtwinklig: boolean;
+  rissMm: number | null;
+}
+
+/** Was die Prüfung eines Endes mit dem Anschlagwinkel zeigt (aus dem Endwinkel im Kern). */
+export function endPruefen(w: Werkstueck, ende: EndeId): EndBefund {
+  const spaltMm = Math.round(Math.abs(Math.tan((w.enden[ende].winkel_grad * Math.PI) / 180)) * w.masse_mm.b * 10) / 10;
+  return { spaltMm, rechtwinklig: spaltMm <= RECHTWINKLIG_BIS_MM, rissMm: endrisse(w)[ende] };
 }
 
 export interface HinweisKontext {
@@ -118,62 +148,62 @@ export interface HinweisKontext {
   zielWerkbank?: boolean;
 }
 
-const ENDE_TEXT: Readonly<Record<EndeId, string>> = { a: 'linken', b: 'rechten' };
+export interface Hinweis {
+  text: string;
+  /** Warnungen haben Vorrang vor Meldungen (QA F4). */
+  warnung: boolean;
+}
+
+/** „am linken Ende“ (Dativ). */
+const ENDE_DATIV: Readonly<Record<EndeId, string>> = { a: 'linken', b: 'rechten' };
+
+const info = (text: string): Hinweis => ({ text, warnung: false });
+const warnung = (text: string): Hinweis => ({ text, warnung: true });
 
 /**
- * Hinweis zum aktuellen Schritt. Geführt (erste Aufträge): kurze Anleitung „Schritt n/6“ für jeden Schritt.
+ * Hinweis zum aktuellen Schritt – eine Zeile, oben. Geführt (erste Aufträge): „Schritt n/6“ für jeden Schritt.
  * Danach nur noch, was man nicht sehen kann (Riss am Ende) oder was gerade zu tun ist, ganz knapp.
  */
-export function schrittHinweis(z: Spielzustand, k: HinweisKontext): string | null {
+export function schrittHinweis(z: Spielzustand, k: HinweisKontext): Hinweis | null {
   const gefuehrt = istGefuehrt(z);
   const a = z.arbeit;
   const soll = sollMm(aktuellerAuftrag(z));
   if (!k.anDerBank || !a) {
-    if (a) return a.phase === 'ergebnis' ? 'Dein Ergebnis liegt an der Werkbank.' : 'Dein Brett wartet an der Werkbank.';
+    if (a) return info(a.phase === 'ergebnis' ? 'Dein Ergebnis liegt an der Werkbank.' : 'Dein Brett wartet an der Werkbank.');
     if (!gefuehrt) return null;
-    return k.zielWerkbank === true
-      ? 'Tippe „An die Werkbank“ – dort wartet dein Auftrag.'
-      : 'Schau zur Werkbank: rechts auf dem Bildschirm ziehen.';
+    return info(k.zielWerkbank === true ? 'Tippe „An die Werkbank“ – dort wartet dein Auftrag.' : 'Schau zur Werkbank: rechts auf dem Bildschirm ziehen.');
   }
   switch (a.phase) {
     case 'bezugsende': {
       const r = endrisse(k.stueck);
       const riss: EndeId | null = r.a !== null ? 'a' : r.b !== null ? 'b' : null;
-      if (riss) {
-        const anders = riss === 'a' ? 'b' : 'a';
-        return gefuehrt
-          ? `Schritt 1/6 · Brett prüfen: Am ${ENDE_TEXT[riss]} Ende ist ein Riss. Tippe auf das ${ENDE_TEXT[anders]} Ende – von dort wird gemessen.`
-          : `Riss am ${ENDE_TEXT[riss]} Ende – Bezugsende antippen.`;
-      }
-      return gefuehrt ? 'Schritt 1/6 · Tippe auf ein Brettende – von dort wird gemessen.' : 'Bezugsende antippen.';
+      const pruefen = 'Prüfe beide Enden – miss vom rechtwinkligen.';
+      if (riss) return warnung(`${gefuehrt ? 'Schritt 1/6 · ' : ''}Riss am ${ENDE_DATIV[riss]} Ende! ${pruefen}`);
+      return info(gefuehrt ? `Schritt 1/6 · ${pruefen.replace('Prüfe beide Enden', 'Prüfe beide Enden (antippen)')}` : 'Bezugsende prüfen und wählen.');
     }
     case 'messen':
     case 'anreissen': {
       if (soll !== null && Math.abs(k.massMm - soll) < 1e-6) {
-        return gefuehrt ? `Schritt 3/6 · ✓ ${zahl(soll)} mm – jetzt „Anreissen“ tippen.` : `✓ ${zahl(soll)} mm`;
+        return info(gefuehrt ? `Schritt 3/6 · ✓ ${zahl(soll)} mm – jetzt „Anreissen“ tippen.` : `✓ ${zahl(soll)} mm`);
       }
       if (!gefuehrt) return null;
       const ziel = soll === null ? '' : ` auf ${zahl(soll)} mm`;
-      return `Schritt 2/6 · Massband-Griff${ziel} ziehen, mit −0,5 / +0,5 fein einstellen.`;
+      return info(`Schritt 2/6 · Massband${ziel} ziehen, mit −0,5 / +0,5 fein einstellen.`);
     }
     case 'ansetzen':
-      if (k.saegenFreigegeben) {
-        return gefuehrt ? 'Schritt 5/6 · Rechts auf der Spur auf und ab wischen. Am Ende langsamer, links „Abfall stützen“ halten.' : null;
-      }
-      return gefuehrt ? 'Schritt 4/6 · Blatt neben den Strich auf die Abfallseite schieben (etwa +0,8 mm), dann „Sägen ›“.' : null;
+      if (k.saegenFreigegeben) return gefuehrt ? info('Schritt 5/6 · Rechts auf und ab wischen, links „Abfall stützen“ halten.') : null;
+      return gefuehrt ? info('Schritt 4/6 · Blatt auf die Abfallseite schieben (≈ +0,8 mm), dann „Sägen ›“.') : null;
     case 'saegen': {
       const drift = a.drift_grad;
-      if (Math.abs(drift) >= 0.5) return `Schnitt läuft schief (${drift > 0 ? '+' : '−'}${zahl(Math.abs(drift))}°) – seitlich gegensteuern.`;
-      return gefuehrt ? 'Schritt 5/6 · Gleichmässig weiter, am Ende langsamer.' : null;
+      if (Math.abs(drift) >= 0.5) return warnung(`Schnitt läuft schief (${vorzeichenZahl(drift, 1)}°) – seitlich gegensteuern.`);
+      return gefuehrt ? info('Schritt 5/6 · Gleichmässig weiter, am Ende langsamer.') : null;
     }
-    case 'ergebnis': {
-      const e = a.ergebnis;
-      if (!e) return null;
-      if (e.qualitaet.stufe === 'ausschuss') return 'Ausschuss – „Neues Brett“ tippen und es noch einmal versuchen.';
-      return gefuehrt ? `Schritt 6/6 · Abliefern bringt ${String(e.preis)} G.` : null;
-    }
+    case 'ergebnis':
+      // Die Ergebniskarte erklärt alles; kein Hinweis darüber (QA F2)
+      return null;
   }
 }
+
 
 /** Kurzer Text, warum eine Aktion nicht ging (Gründe aus der Fassade). */
 export function grundText(grund: string): string {

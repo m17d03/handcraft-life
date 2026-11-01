@@ -24,7 +24,8 @@ export interface Hud {
   saegeFortschritt(zug: number, von: number, tempoOk: boolean): void;
   ergebnisKarte(daten: ErgebnisDaten | null): void;
   geldAnzeigen(g: number): void;
-  hinweis(text: string | null): void;
+  /** `art: 'warnung'` hebt den Hinweis hervor (Ticket 013). */
+  hinweis(text: string | null, art?: 'info' | 'warnung'): void;
   // --- Ergänzungen (zusätzlich zur verbindlichen API) ---
   /** Kontext-Aktionstaste (88 pt) im Erkunden, z. B. {id:'werkbank', text:'Werkbank benutzen'}. */
   aktionstaste(taste: { id: string; text: string } | null): void;

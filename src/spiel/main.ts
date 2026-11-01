@@ -79,6 +79,8 @@ async function start(): Promise<void> {
       perf,
       aufloesung: leseAufloesungsParameter(suche),
       assetBasis: import.meta.env.BASE_URL,
+      // ?test=1 (nur mit Debug): Kamerafahrten ohne Dauer – verkürzt E2E-Wartezeiten, nicht den Ablauf (QA F9)
+      ...(debug && params.has('test') ? { kamerafahrtMs: 0 } : {}),
       beiAssetFehler: (e) => {
         // Spiel bleibt spielbar (Platzhalter-Modelle); sichtbar im Debug-Overlay
         setzeDebugZeile('assets', `Assets nicht geladen: ${e instanceof Error ? e.message : String(e)}`);

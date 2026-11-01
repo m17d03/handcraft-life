@@ -6,6 +6,7 @@ import {
   auftragText,
   bedarfMm,
   endeAusMm,
+  endPruefen,
   endrisse,
   ergebnisKarte,
   hudModusFuer,
@@ -88,31 +89,71 @@ describe('Ablauf Vertical Slice (Ticket 013)', () => {
     expect(hudModusFuer(nachNeuladen(z).arbeit, true, false)).toBe('werkbank-ansetzen');
   });
 
-  it('Geführte Hinweise: Schritt 1–6 im ersten Auftrag, Riss wird benannt; danach knapp', () => {
+  it('Geführte Hinweise: Schritt 1–6 im ersten Auftrag, Riss als Warnung; danach knapp', () => {
+    const t = (h: ReturnType<typeof schrittHinweis>): string | undefined => h?.text;
     let z = neuerSpielzustand(katalog, 5);
     expect(istGefuehrt(z)).toBe(true);
-    expect(schrittHinweis(z, { anDerBank: false, massMm: 0, saegenFreigegeben: false, zielWerkbank: true })).toContain('An die Werkbank');
+    expect(t(schrittHinweis(z, { anDerBank: false, massMm: 0, saegenFreigegeben: false, zielWerkbank: true }))).toContain('An die Werkbank');
     const auftrag = z.auftraege[0];
     if (!auftrag) throw new Error();
     z = tun(z, { art: 'auftragAnnehmen', auftragId: auftrag.id });
     z = tun(z, { art: 'materialKaufen', materialId: 'holz.material.fichte-brett-2000' });
     z = tun(z, { art: 'zuschnittBeginnen', werkstueckId: z.inventar.werkstuecke[0]?.id ?? '' });
     const k = { anDerBank: true, massMm: 0, saegenFreigegeben: false };
-    expect(schrittHinweis(z, { ...k, stueck: brett('x', 2000, 50) })).toContain('Am linken Ende ist ein Riss');
-    expect(schrittHinweis(z, { ...k, stueck: brett('x', 2000) })).toContain('Schritt 1/6');
+    const riss = schrittHinweis(z, { ...k, stueck: brett('x', 2000, 50) });
+    expect(riss).toEqual({ warnung: true, text: 'Schritt 1/6 · Riss am linken Ende! Prüfe beide Enden – miss vom rechtwinkligen.' });
+    expect(t(schrittHinweis(z, { ...k, stueck: brett('x', 2000) }))).toBe('Schritt 1/6 · Prüfe beide Enden (antippen) – miss vom rechtwinkligen.');
     z = tun(z, { art: 'bezugsendeWaehlen', ende: 'a' });
-    expect(schrittHinweis(z, k)).toContain('Schritt 2/6');
-    expect(schrittHinweis(z, { ...k, massMm: 600 })).toContain('Schritt 3/6');
+    expect(t(schrittHinweis(z, k))).toContain('Schritt 2/6');
+    expect(t(schrittHinweis(z, { ...k, massMm: 600 }))).toContain('Schritt 3/6');
     z = tun(z, { art: 'markierungSetzen', mm: 600 });
     z = tun(z, { art: 'anreissen' });
-    expect(schrittHinweis(z, k)).toContain('Schritt 4/6');
-    expect(schrittHinweis(z, { ...k, saegenFreigegeben: true })).toContain('Schritt 5/6');
-    // nach zwei abgelieferten Aufträgen: keine Schritt-Anleitung mehr, Riss weiterhin benannt
+    expect(t(schrittHinweis(z, k))).toContain('Schritt 4/6');
+    expect(t(schrittHinweis(z, { ...k, saegenFreigegeben: true }))).toContain('Schritt 5/6');
+    // eine Zeile: kein Hinweis länger als 82 Zeichen (Hinweisfeld oben, nicht über der Arbeitsfläche)
+    for (const h of [riss, schrittHinweis(z, k), schrittHinweis(z, { ...k, saegenFreigegeben: true })]) expect((h?.text ?? '').length).toBeLessThanOrEqual(82);
+    // nach zwei abgelieferten Aufträgen: keine Schritt-Anleitung mehr, Riss weiterhin als Warnung
     z.tutorial = 2;
     expect(istGefuehrt(z)).toBe(false);
     expect(schrittHinweis(z, k)).toBeNull();
     z.arbeit = z.arbeit ? { ...z.arbeit, phase: 'bezugsende' } : null;
-    expect(schrittHinweis(z, { ...k, stueck: brett('x', 2000, undefined, 30) })).toBe('Riss am rechten Ende – Bezugsende antippen.');
+    expect(schrittHinweis(z, { ...k, stueck: brett('x', 2000, undefined, 30) })).toEqual({
+      warnung: true,
+      text: 'Riss am rechten Ende! Prüfe beide Enden – miss vom rechtwinkligen.',
+    });
+  });
+
+  it('Ergebnis: kein Hinweis über der Karte', () => {
+    const z = durchgang(11);
+    expect(schrittHinweis(z, { anDerBank: true, massMm: 0, saegenFreigegeben: false })).toBeNull();
+  });
+
+  it('Endprüfung: Spalt am Anschlagwinkel aus dem Endwinkel, rechtwinklig bis 0,8 mm', () => {
+    const w = brett('x', 2000, undefined, 40);
+    w.enden.a.winkel_grad = (Math.atan(0.2 / 70) * 180) / Math.PI; // Bezugsfehler 0,2 mm → Spalt 0,4 mm
+    w.enden.b.winkel_grad = -(Math.atan(1.5 / 70) * 180) / Math.PI; // 1,5 mm → Spalt 3 mm
+    expect(endPruefen(w, 'a')).toEqual({ spaltMm: 0.4, rechtwinklig: true, rissMm: null });
+    expect(endPruefen(w, 'b')).toEqual({ spaltMm: 3, rechtwinklig: false, rissMm: 40 });
+    // neue Rohbretter (Kern, Director 998eb6d): genau ein Ende rechtwinklig
+    for (let saat = 1; saat <= 40; saat++) {
+      let z = neuerSpielzustand(katalog, saat);
+      z = tun(z, { art: 'materialKaufen', materialId: 'holz.material.fichte-brett-2000' });
+      const ws = z.inventar.werkstuecke[0];
+      if (!ws) throw new Error();
+      expect([endPruefen(ws, 'a').rechtwinklig, endPruefen(ws, 'b').rechtwinklig].filter(Boolean)).toHaveLength(1);
+    }
+  });
+
+  it('Ergebniskarte nennt die Toleranz-Kappung', () => {
+    const z = durchgang(11);
+    const e = z.arbeit?.ergebnis;
+    const auftrag = z.auftraege.find((a) => a.id === z.arbeit?.auftragId);
+    if (!e || !auftrag) throw new Error();
+    e.messwerte['abweichung_l_mm'] = -1.06;
+    auftrag.toleranz = { delta_l_mm: 1 };
+    expect(ergebnisKarte(katalog, z)?.hauptursache).toContain('Ausserhalb der Toleranz: −1,06 mm (erlaubt ±1)');
+    auftrag.toleranz = { delta_l_mm: 2 };
+    expect(ergebnisKarte(katalog, z)?.hauptursache).not.toContain('Toleranz');
   });
 
   it('Ergebniskarte entspricht dem Kern-Ergebnis (Stufe, Q, Ursache, Ist/Soll, Preis)', () => {

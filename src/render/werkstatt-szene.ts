@@ -71,6 +71,33 @@ export interface EndRisse {
   readonly b: number | null;
 }
 
+/** Winkelfehler der Werksenden a/b in Grad (Vorzeichen wie `Ende.winkel_grad` im Kern). */
+export interface EndWinkel {
+  readonly a: number;
+  readonly b: number;
+}
+
+/**
+ * Überzeichnung der Endwinkel in der Darstellung (Director-Entscheid Ticket 013, QA F1): echte Fehler von
+ * 1–2 mm auf 140 mm Breite wären aus der Arbeitsansicht unsichtbar. Dreifach gezeichnet bleibt ein schiefes
+ * Ende als schräge Kante erkennbar; die Spielregeln rechnen mit dem echten Winkel.
+ */
+export const ENDWINKEL_UEBERZEICHNUNG = 3;
+
+/**
+ * Brett-Quader schräg abschneiden: Punkte nahe dem linken (−x) bzw. rechten (+x) Ende werden um tan(Winkel)·z
+ * verschoben. Positiver Winkel = die Kante, an der der Massband-Haken greift (Hinterkante, z < 0), steht vor.
+ */
+export function endenScheren(positionen: Float32Array, winkelLinksGrad: number, winkelRechtsGrad: number): void {
+  const kl = Math.tan((winkelLinksGrad * ENDWINKEL_UEBERZEICHNUNG * Math.PI) / 180);
+  const kr = Math.tan((winkelRechtsGrad * ENDWINKEL_UEBERZEICHNUNG * Math.PI) / 180);
+  for (let i = 0; i < positionen.length; i += 3) {
+    const x = positionen[i] ?? 0;
+    const z = positionen[i + 2] ?? 0;
+    positionen[i] = x + (x < 0 ? kl * z : -kr * z);
+  }
+}
+
 export interface SzenenZustand {
   readonly lage: BrettLage;
   readonly markierungMm: number | null;
@@ -78,6 +105,7 @@ export interface SzenenZustand {
   readonly saege: SaegeZustand | null;
   readonly hervorgehoben: string | null;
   readonly risse: EndRisse;
+  readonly winkel: EndWinkel;
 }
 
 function geometrie(m: MeshDaten): THREE.BufferGeometry {
@@ -91,6 +119,26 @@ function geometrie(m: MeshDaten): THREE.BufferGeometry {
 }
 
 const quader = (o: FasenQuaderOptionen, pos: Vec3): THREE.BufferGeometry => geometrie(fasenQuader(o)).translate(pos[0], pos[1], pos[2]);
+
+/**
+ * Brett-Geometrie mit zwei Materialgruppen: 0 = Fläche/Kanten (Fichte längs), 1 = Stirnseiten (Hirnholz).
+ * Stirn = Dreiecke, deren ursprüngliche Normale entlang x zeigt. Normalen danach neu (Enden sind geschert).
+ */
+function mitHirnGruppe(g: THREE.BufferGeometry, m: MeshDaten): THREE.BufferGeometry {
+  const flaeche: number[] = [];
+  const stirn: number[] = [];
+  for (let t = 0; t < m.indizes.length; t += 3) {
+    const i0 = m.indizes[t] ?? 0;
+    const tri = [i0, m.indizes[t + 1] ?? 0, m.indizes[t + 2] ?? 0];
+    (Math.abs(m.normalen[i0 * 3] ?? 0) > 0.9 ? stirn : flaeche).push(...tri);
+  }
+  g.setIndex([...flaeche, ...stirn]);
+  g.clearGroups();
+  g.addGroup(0, flaeche.length, 0);
+  g.addGroup(flaeche.length, stirn.length, 1);
+  g.computeVertexNormals();
+  return g;
+}
 
 interface HolzKarten {
   readonly albedo: THREE.Texture;
@@ -118,6 +166,8 @@ export class WerkstattSzene {
   private readonly hervorMat = new Map<string, THREE.MeshStandardMaterial[]>();
   private readonly gruppen = new Map<string, THREE.Object3D>();
   private readonly brettMat: THREE.MeshStandardMaterial;
+  private readonly hirnMat: THREE.MeshStandardMaterial;
+  private readonly brettKontakt: { brett: THREE.Mesh; reststueck: THREE.Mesh };
   private readonly restMat: THREE.MeshStandardMaterial;
   private readonly brett: THREE.Mesh;
   private readonly rest: THREE.Mesh;
@@ -268,6 +318,8 @@ export class WerkstattSzene {
     werkbank.name = 'werkbank';
     if (assets) {
       const wb = this.modell(assets, 'werkbank', { Werkbank_Platte: 'werkbank.platte', Werkbank_Gestell: 'werkbank.gestell' });
+      // Eichenplatte etwas dunkler: mehr Kontrast zum hellen Fichtenbrett (QA-Stil Ticket 013)
+      for (const m of this.hervorMat.get('werkbank') ?? []) if (m.name === 'werkbank.platte') m.color.multiplyScalar(0.8);
       // Modell 1,5 × 0,6 m → Layout (Plattenoberkante bleibt bei 0,9 m)
       wb.scale.set(bl / 1.5, 1, bt / 0.6);
       wb.position.set(bx, 0, bz);
@@ -372,10 +424,30 @@ export class WerkstattSzene {
     // ---- Brett (Fichte) und Reststück; Geometrie folgt der Lage (setzeBrett)
     this.brettMat = holzMat('brett', '#ffffff');
     this.restMat = holzMat('reststueck', '#ffffff');
-    this.hervorMat.set('brett', [this.brettMat]);
     this.hervorMat.set('reststueck', [this.restMat]);
-    this.brett = this.mesh('brett', new THREE.BufferGeometry(), this.brettMat, { empfaengt: true, wirft: true });
-    this.rest = this.mesh('reststueck', new THREE.BufferGeometry(), this.restMat, { empfaengt: true, wirft: true });
+    // Stirnseiten (Hirnholz): eigene Textur aus 012, sonst dunkler getönt. UV der Stirn: 1 m = 3,33 Einheiten.
+    if (assets) {
+      const h = kachel('fichte-hirn', 1.2 / 4);
+      this.hirnMat = this.mat('brett.hirnholz', { color: '#ffffff', map: h.albedo, roughnessMap: h.orm, normalMap: h.normal, roughness: 1, metalness: 0 });
+    } else {
+      this.hirnMat = holzMat('brett.hirnholz', '#b08a62');
+    }
+    this.hervorMat.set('brett', [this.brettMat, this.hirnMat]);
+    this.brett = this.mesh('brett', new THREE.BufferGeometry(), [this.brettMat, this.hirnMat], { empfaengt: true, wirft: true });
+    this.rest = this.mesh('reststueck', new THREE.BufferGeometry(), [this.restMat, this.hirnMat], { empfaengt: true, wirft: true });
+    // Kontaktschatten unter Brett und Reststück: hebt das helle Fichtenbrett von der Eichenplatte ab
+    const kontaktMat = this.basis('brett.kontaktschatten', { color: '#000000', alphaMap: weich, transparent: true, opacity: 0.55, depthWrite: false });
+    const kontaktGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    this.merke(kontaktGeo);
+    const kontaktMesh = (name: string): THREE.Mesh => {
+      const m = new THREE.Mesh(kontaktGeo, kontaktMat);
+      m.name = name;
+      m.renderOrder = 1;
+      m.visible = false;
+      s.add(m);
+      return m;
+    };
+    this.brettKontakt = { brett: kontaktMesh('brett.kontakt'), reststueck: kontaktMesh('reststueck.kontakt') };
     this.gruppen.set('brett', this.brett);
     this.gruppen.set('reststueck', this.rest);
     const markeMat = this.mat('brett.bezugsende', { color: PALETTE.bernstein, emissive: PALETTE.bernstein, emissiveIntensity: 0.35, roughness: 0.6 });
@@ -393,10 +465,20 @@ export class WerkstattSzene {
       {},
     );
     // Endriss: dunkler, spitz zulaufender Spalt auf der Oberseite (Länge 1 m entlang +x, skaliert) und Kerbe in der Stirn
-    const rissForm = new THREE.Shape([new THREE.Vector2(0, -0.0024), new THREE.Vector2(1, -0.0002), new THREE.Vector2(1, 0.0002), new THREE.Vector2(0, 0.0024)]);
+    // Breiter, dunkler Spalt (≈ 9 mm offen am Ende, läuft spitz aus), damit er in der Arbeitsansicht lesbar ist (QA F4)
+    const rissForm = new THREE.Shape([
+      new THREE.Vector2(0, -0.0045),
+      new THREE.Vector2(0.35, -0.0022),
+      new THREE.Vector2(0.7, -0.0012),
+      new THREE.Vector2(1, -0.0001),
+      new THREE.Vector2(1, 0.0001),
+      new THREE.Vector2(0.65, 0.0016),
+      new THREE.Vector2(0.3, 0.0018),
+      new THREE.Vector2(0, 0.0045),
+    ]);
     const rissGeo = mergeGeometries([
       new THREE.ShapeGeometry(rissForm).rotateX(-Math.PI / 2).translate(0, 0.0003, 0),
-      new THREE.PlaneGeometry(0.0045, BRETT.dickeMm / 1000 * 0.8).rotateY(-Math.PI / 2).translate(-0.0003, -BRETT.dickeMm / 2000, 0),
+      new THREE.PlaneGeometry(0.009, (BRETT.dickeMm / 1000) * 0.85).rotateY(-Math.PI / 2).translate(-0.0004, -BRETT.dickeMm / 2000, 0),
     ]);
     const rissMat = this.mat('brett.riss', { color: PALETTE.riss, roughness: 1, side: THREE.DoubleSide });
     this.risse = {
@@ -590,7 +672,7 @@ export class WerkstattSzene {
     return m;
   }
 
-  private mesh(name: string, g: THREE.BufferGeometry, m: THREE.Material, o: { wirft?: boolean; empfaengt?: boolean; eltern?: THREE.Object3D }): THREE.Mesh {
+  private mesh(name: string, g: THREE.BufferGeometry, m: THREE.Material | THREE.Material[], o: { wirft?: boolean; empfaengt?: boolean; eltern?: THREE.Object3D }): THREE.Mesh {
     const mesh = new THREE.Mesh(g, m);
     mesh.name = name;
     mesh.castShadow = o.wirft ?? false;
@@ -614,33 +696,46 @@ export class WerkstattSzene {
   // ------------------------------------------------------------------ Zustand → Bild
 
   aktualisiere(z: SzenenZustand): void {
-    this.setzeBrett(z.lage);
-    this.setzeRisse(z.lage, z.risse);
+    this.setzeBrett(z.lage, z.winkel);
+    this.setzeRisse(z.lage, z.risse, z.winkel);
     this.setzeMarkierung(z.lage, z.markierungMm);
     this.setzeMassband(z.lage, z.massbandMm);
     this.setzeSaege(z.lage, z.markierungMm, z.saege);
     this.setzeHervorhebung(z.hervorgehoben);
   }
 
-  private setzeBrett(lage: BrettLage): void {
-    const schluessel = `${String(lage.laengeMm)}|${String(lage.bezugsende)}|${String(lage.schnittIstMm)}`;
+  /** Winkel des linken/rechten Endes eines Stücks: Werksenden behalten ihren Winkel, Schnittenden sind gerade. */
+  private stueckWinkel(lage: BrettLage, id: 'brett' | 'reststueck', w: EndWinkel): { links: number; rechts: number } {
+    if (lage.schnittIstMm === null) return { links: w.a, rechts: w.b };
+    const bezugA = (lage.bezugsende ?? 'a') === 'a';
+    if (id === 'brett') return bezugA ? { links: w.a, rechts: 0 } : { links: 0, rechts: w.b };
+    return bezugA ? { links: 0, rechts: w.b } : { links: w.a, rechts: 0 };
+  }
+
+  private setzeBrett(lage: BrettLage, winkel: EndWinkel): void {
+    const schluessel = `${String(lage.laengeMm)}|${String(lage.bezugsende)}|${String(lage.schnittIstMm)}|${String(winkel.a)}|${String(winkel.b)}`;
     if (schluessel === this.brettSchluessel) return;
     this.brettSchluessel = schluessel;
     const { richtung } = bezug(lage);
     const stuecke = brettStuecke(lage);
-    for (const mesh of [this.brett, this.rest]) mesh.visible = false;
+    for (const mesh of [this.brett, this.rest, this.brettKontakt.brett, this.brettKontakt.reststueck]) mesh.visible = false;
     for (const st of stuecke) {
       const mesh = st.id === 'brett' ? this.brett : this.rest;
+      const kontakt = this.brettKontakt[st.id];
+      kontakt.visible = true;
+      kontakt.position.set(st.mitte[0], WERKBANK.hoehe + 0.0008, st.mitte[2] + 0.004);
+      kontakt.scale.set(st.laengeMm / 1000 + 0.035, 1, BRETT.breiteMm / 1000 + 0.035);
       // Maserung läuft über den Schnitt hinweg weiter: UV-Versatz aus der ursprünglichen Lage
       const urX = st.id === 'brett' ? st.mitte[0] : st.mitte[0] - richtung * BRETT.restAbstandM;
-      const neu = geometrie(
-        fasenQuader({
-          groesse: [st.laengeMm / 1000, BRETT.dickeMm / 1000, BRETT.breiteMm / 1000],
-          fase: BRETT.faseMm / 1000,
-          uvMeter: 1.2,
-          uvVersatz: [(urX - BRETT.x) / 1.2 + 0.13, 0.31],
-        }),
-      );
+      const daten = fasenQuader({
+        groesse: [st.laengeMm / 1000, BRETT.dickeMm / 1000, BRETT.breiteMm / 1000],
+        fase: BRETT.faseMm / 1000,
+        uvMeter: 1.2,
+        uvVersatz: [(urX - BRETT.x) / 1.2 + 0.13, 0.31],
+      });
+      const w = this.stueckWinkel(lage, st.id, winkel);
+      endenScheren(daten.positionen, w.links, w.rechts);
+      const neu = mitHirnGruppe(geometrie(daten), daten);
       mesh.geometry.dispose();
       mesh.geometry = neu;
       mesh.position.set(...st.mitte);
@@ -652,7 +747,7 @@ export class WerkstattSzene {
   }
 
   /** Endrisse an den physischen Enden a (links, −x) und b (rechts); nach dem Schnitt am jeweiligen Stück. */
-  private setzeRisse(lage: BrettLage, risse: EndRisse): void {
+  private setzeRisse(lage: BrettLage, risse: EndRisse, winkel: EndWinkel): void {
     const stuecke = brettStuecke(lage);
     const haupt = stuecke[0];
     const rest = stuecke[1];
@@ -667,9 +762,12 @@ export class WerkstattSzene {
         continue;
       }
       const links = ende === 'a';
-      const x = links ? stueck.box.min[0] : stueck.box.max[0];
+      // Riss sitzt 12 mm hinter der Brettmitte; die schräge Stirn verschiebt das Ende dort um tan(w)·z
+      const zRel = -0.012;
+      const k = Math.tan((winkel[ende] * ENDWINKEL_UEBERZEICHNUNG * Math.PI) / 180);
+      const x = links ? stueck.box.min[0] + k * zRel : stueck.box.max[0] - k * zRel;
       mesh.visible = true;
-      mesh.position.set(x, stueck.box.max[1], stueck.mitte[2] - 0.012);
+      mesh.position.set(x, stueck.box.max[1], stueck.mitte[2] + zRel);
       // Geometrie läuft entlang +x vom Ende ins Stück; Ende b gespiegelt
       mesh.rotation.set(0, links ? 0 : Math.PI, 0);
       mesh.scale.set(Math.min(laenge, stueck.laengeMm) / 1000, 1, 1);
@@ -853,9 +951,9 @@ export class WerkstattSzene {
   leuchtendeMaterialien(): string[] {
     const namen = new Set<string>();
     this.szene.traverse((o) => {
-      if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshStandardMaterial) {
-        const m = o.material;
-        if (m.emissive.getHexString() === HERVORHEBUNG.farbe.slice(1)) namen.add(m.name);
+      if (!(o instanceof THREE.Mesh)) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (m instanceof THREE.MeshStandardMaterial && m.emissive.getHexString() === HERVORHEBUNG.farbe.slice(1)) namen.add(m.name);
       }
     });
     return [...namen].sort();
