@@ -1,0 +1,107 @@
+{
+  "format": "handcraft-life-save",
+  "huelle": 1,
+  "spielVersion": "9.9.9",
+  "gespeichert": "2026-11-01T12:00:00.000Z",
+  "kern": {
+    "schema": 999,
+    "daten": {
+      "inventar": {
+        "geld": 46,
+        "schulden": 0,
+        "werkstuecke": [
+          {
+            "id": "ws_4",
+            "materialId": "holz.material.fichte-brett-2000",
+            "masse_mm": {
+              "l": 1397.463,
+              "b": 140,
+              "d": 18
+            },
+            "enden": {
+              "a": {
+                "winkel_grad": 0,
+                "merkmale": []
+              },
+              "b": {
+                "winkel_grad": -0.572943829874472,
+                "merkmale": [
+                  {
+                    "id": "holz.merkmal.endriss",
+                    "laenge_mm": 73
+                  }
+                ]
+              }
+            },
+            "merkmale": [],
+            "herkunft": "rest"
+          }
+        ],
+        "gegenstaende": [],
+        "werkzeuge": [
+          {
+            "werkzeugId": "kern.werkzeug.massband"
+          },
+          {
+            "werkzeugId": "holz.werkzeug.fuchsschwanz"
+          }
+        ]
+      },
+      "auftraege": [
+        {
+          "id": "af_1",
+          "vorlageId": "holz.auftrag.regalbrett",
+          "soll": {
+            "laenge_mm": 600
+          },
+          "toleranz": {
+            "delta_l_mm": 1
+          },
+          "basispreis": 14,
+          "kundeId": "laufkunde",
+          "status": "abgeliefert",
+          "werkstueckId": "ws_3"
+        },
+        {
+          "id": "af_5",
+          "vorlageId": "holz.auftrag.regalbrett",
+          "soll": {
+            "laenge_mm": 600
+          },
+          "toleranz": {
+            "delta_l_mm": 1
+          },
+          "basispreis": 14,
+          "kundeId": "laufkunde",
+          "status": "angeboten"
+        }
+      ],
+      "skills": {
+        "holz.skill.holzhandwerk": {
+          "xp": 8,
+          "knoten": []
+        }
+      },
+      "zaehler": {
+        "kern.zaehler.schnitte": 1,
+        "kern.zaehler.schnitt-stufe-b": 1,
+        "kern.zaehler.auftraege-abgeliefert": 1
+      },
+      "tutorial": 1,
+      "zufallSaat": 4231026101,
+      "naechsteNr": 6,
+      "arbeit": null,
+      "neuesFeld": {
+        "aus": "der Zukunft"
+      }
+    }
+  },
+  "module": {
+    "holz": {
+      "modulVersion": "0.1.0",
+      "schema": 1,
+      "aktiv": true,
+      "daten": {}
+    }
+  }
+}

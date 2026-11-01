@@ -1,0 +1,54 @@
+{
+  "format": "handcraft-life-save",
+  "huelle": 1,
+  "spielVersion": "0.0.1",
+  "gespeichert": "2026-11-01T12:00:00.000Z",
+  "kern": {
+    "schema": 1,
+    "daten": {
+      "inventar": {
+        "geld": 40,
+        "schulden": 0,
+        "werkstuecke": [],
+        "gegenstaende": [],
+        "werkzeuge": [
+          {
+            "werkzeugId": "kern.werkzeug.massband"
+          },
+          {
+            "werkzeugId": "holz.werkzeug.fuchsschwanz"
+          }
+        ]
+      },
+      "auftraege": [
+        {
+          "id": "af_1",
+          "vorlageId": "holz.auftrag.regalbrett",
+          "soll": {
+            "laenge_mm": 600
+          },
+          "toleranz": {
+            "delta_l_mm": 1
+          },
+          "basispreis": 14,
+          "kundeId": "laufkunde",
+          "status": "angeboten"
+        }
+      ],
+      "skills": {},
+      "zaehler": {},
+      "tutorial": 0,
+      "zufallSaat": 1,
+      "naechsteNr": 2,
+      "arbeit": null
+    }
+  },
+  "module": {
+    "holz": {
+      "modulVersion": "0.1.0",
+      "schema": 1,
+      "aktiv": true,
+      "daten": {}
+    }
+  }
+}
