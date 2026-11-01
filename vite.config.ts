@@ -16,6 +16,7 @@ export default defineConfig({
         'spike-babylon': resolve(import.meta.dirname, 'spikes/babylon/index.html'),
         'spike-playcanvas': resolve(import.meta.dirname, 'spikes/playcanvas/index.html'),
         'spike-three': resolve(import.meta.dirname, 'spikes/three/index.html'),
+        'hud-demo': resolve(import.meta.dirname, 'hud-demo/index.html'),
       },
     },
   },
