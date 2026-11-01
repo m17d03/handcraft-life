@@ -1,7 +1,7 @@
 ---
 adr: 0004
 titel: Vertical Slice nur im Querformat, durchgehend Ich-Sicht (Steuerungskonzept B)
-status: vorgeschlagen
+status: angenommen
 datum: 2026-10-31
 ---
 

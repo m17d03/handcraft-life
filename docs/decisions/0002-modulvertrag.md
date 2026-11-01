@@ -1,7 +1,7 @@
 ---
 adr: 0002
 titel: Spielbereiche sind Module im selben Code mit statischem Manifest, stabilen IDs und materialunabhängigen Kern-Prozessen – kein Plug-in-System
-status: vorgeschlagen
+status: angenommen
 datum: 2026-10-31
 ---
 

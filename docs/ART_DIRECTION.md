@@ -1,6 +1,6 @@
 # ART_DIRECTION
 
-Status: **Konzept – Wahl durch den Menschen offen.** Quelle: `docs/art/stil-varianten.md`.
+Status: **Freigegeben: Variante A „Honigwerkstatt“** (Mensch, 2026-11-01). Quelle: `docs/art/stil-varianten.md`.
 Moodboard (iPhone): https://m17d03.github.io/handcraft-life/konzepte/stil/
 Alle Bilder dort sind **Konzeptbilder – kein Spielscreenshot**.
 
@@ -12,7 +12,7 @@ Alle Bilder dort sind **Konzeptbilder – kein Spielscreenshot**.
 | Lesbarkeit Massband | gut | sehr gut | schwach |
 | GPU-Kosten | mittel | niedrig | hoch |
 
-## Empfehlung: A
+## Gewählt: A
 A erfüllt "warmes, natürliches Licht" (Master-Prompt §8) am direktesten. Die Arbeitsfläche hat starken
 Kontrast, und die Kosten sind planbar: ein Sonnenschatten, der Rest gebacken. Die UI-Sprache gibt es schon
 in den Steuerungs-Mockups. Mit denselben Assets lässt sich auf B umschwenken.

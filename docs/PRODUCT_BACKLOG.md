@@ -1,6 +1,6 @@
 # PRODUCT_BACKLOG
 
-Status: **Entwurf zur Freigabe** (Phase 0). Phase-1-Tickets werden erst nach der Freigabe von
+Status: **Freigegeben** (Mensch, 2026-11-01) (Phase 0). Phase-1-Tickets werden erst nach der Freigabe von
 `docs/PHASE0_ERGEBNIS.md` geschrieben.
 
 ## Erledigt
@@ -20,7 +20,7 @@ Status: **Entwurf zur Freigabe** (Phase 0). Phase-1-Tickets werden erst nach der
 3. Touch-Steuerung Ich-Sicht quer, Werkbank-Modus, HUD, Hochformat-Hinweis – mobile-ux
 4. Mechanik Brett ablängen: Messen, Anzeichnen, Sägen, Qualitätsformel (reine Logik mit Tests) – engine-engineer
 5. Auftrag, Ergebniskarte, Verkauf, Geld – engine-engineer + mobile-ux (getrennte Tickets)
-6. Assets: Säge, Massband, Werkbank, Holztexturen (Lizenzprüfung, KTX2) – asset-artist
+6. Assets: Säge, Massband, Werkbank als per Skript erzeugte GLB (Blender, sobald erreichbar), Holztexturen prozedural bzw. CC0 mit geprüfter Lizenz, KTX2 – asset-artist
 7. PWA: Manifest, Icons, Speichern bei `visibilitychange`, `storage.persist()` – mobile-ux
 8. Perf-CI-Schritt `tests/perf/` + Playtest – qa-performance
 

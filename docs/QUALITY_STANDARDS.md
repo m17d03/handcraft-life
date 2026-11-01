@@ -1,6 +1,6 @@
 # QUALITY_STANDARDS
 
-Status: **Konzept – Entwurf zur Freigabe** (Phase 0). Die vollständige Kriterienliste (33 Kriterien
+Status: **Freigegeben** (Mensch, 2026-11-01) (Phase 0). Die vollständige Kriterienliste (33 Kriterien
 P/U/S/G mit Messmethode und Startphase) steht in `docs/qa/quality-standards-entwurf.md` und gilt mit
 der Freigabe als verbindlich. Playtest-Vorlage: `docs/qa/playtest-vorlage.md`.
 

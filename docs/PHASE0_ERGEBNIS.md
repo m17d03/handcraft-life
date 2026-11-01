@@ -1,6 +1,6 @@
 # Phase 0 – Ergebnis zur Freigabe
 
-Status: **Konzept – wartet auf deine Freigabe** · Stand 2026-11-01 · Director (Agent A)
+Status: **Freigegeben** (Mensch, 2026-11-01: „Freigabe wie empfohlen“; Engine = beste Performance → **Three.js**, ADR 0001). Ursprünglicher Entwurf · Stand 2026-11-01 · Director (Agent A)
 
 > **Kurz:** Wir bauen zuerst eine kleine Holzwerkstatt in Ich-Sicht (Querformat), in der man ein
 > Brett nach Auftrag misst, sägt, bewerten lässt und verkauft. Vorgeschlagene Engine: Babylon.js,

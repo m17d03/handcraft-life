@@ -1,6 +1,6 @@
 # EXPANSION_REGISTRY
 
-Status: **Konzept – Entwurf zur Freigabe** (übernommen aus `docs/design/modul-vertrag.md` §7, ADR 0002).
+Status: **Freigegeben** (Mensch, 2026-11-01) (übernommen aus `docs/design/modul-vertrag.md` §7, ADR 0002).
 
 | ID | Art | Version | Abhängigkeiten | Neue Mechanik | Phase | Status |
 |---|---|---|---|---|---|---|

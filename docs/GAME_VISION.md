@@ -1,6 +1,6 @@
 # GAME_VISION
 
-Status: **Konzept – Entwurf zur Freigabe** (Phase 0, 2026-10-31). Quelle: `docs/design/core-loop.md`.
+Status: **Freigegeben** (Mensch, 2026-11-01) (Phase 0, 2026-10-31). Quelle: `docs/design/core-loop.md`.
 
 ## Vision in drei Sätzen
 Handcraft Life ist eine ruhige, ehrliche Handwerkssimulation für das iPhone. Man arbeitet in einer

@@ -1,7 +1,7 @@
 ---
 adr: 0003
 titel: Spielstand ist ein JSON-Dokument in IndexedDB mit Kern- und Modulabschnitten, je eigener Schema-Version und Migrationskette
-status: vorgeschlagen
+status: angenommen
 datum: 2026-10-31
 ---
 

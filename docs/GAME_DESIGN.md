@@ -1,6 +1,6 @@
 # GAME_DESIGN
 
-Status: **Konzept – Entwurf zur Freigabe** (Phase 0). Details in `docs/design/`.
+Status: **Freigegeben** (Mensch, 2026-11-01) (Phase 0). Details in `docs/design/`.
 
 | Thema | Dokument | Kern |
 |---|---|---|

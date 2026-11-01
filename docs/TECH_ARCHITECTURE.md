@@ -1,6 +1,6 @@
 # TECH_ARCHITECTURE
 
-Status: **Konzept – Entwurf zur Freigabe** (Phase 0). Grundlage: ADR 0001–0004, `docs/spikes/engine-vergleich.md`,
+Status: **Freigegeben** (Mensch, 2026-11-01) (Phase 0). Grundlage: ADR 0001–0004, `docs/spikes/engine-vergleich.md`,
 `docs/design/modul-vertrag.md`.
 
 ## Bestätigt (Phase S, im Repo, getestet)
@@ -12,10 +12,10 @@ Status: **Konzept – Entwurf zur Freigabe** (Phase 0). Grundlage: ADR 0001–00
 | Auslieferung | `deploy-pages.yml` → https://m17d03.github.io/handcraft-life/ (Multi-Page: Startseite, Konzepte, Spikes) |
 | Debug | `?debug=1`: fps, längster Frame, JS-, Promise- und Ladefehler |
 
-## Vorgeschlagen (Freigabe offen)
+## Entschieden (Freigabe 2026-11-01)
 | Bereich | Vorschlag | Beleg / ADR |
 |---|---|---|
-| Engine | **Babylon.js** (`@babylonjs/core`, tiefe Importe), endgültig erst nach dem iPhone-Spike-Test | ADR 0001 |
+| Engine | **Three.js** r187, exakt gepinnt; beste Performance in allen Messgrössen | ADR 0001, `docs/perf/2026-11-01-engine-benchmark.md` |
 | Renderpfad | WebGL 2 Pflicht; WebGPU erst später prüfen | CLAUDE.md |
 | Auflösung/AA | Pixeldichte auf 2 begrenzt, MSAA×4 als Standard; FXAA als Ausweichoption; dynamische Absenkung bei Last | Spike-Messung, QS G3/G4 |
 | Format/Kamera | Querformat, durchgehend Ich-Sicht | ADR 0004 |
@@ -28,7 +28,7 @@ Status: **Konzept – Entwurf zur Freigabe** (Phase 0). Grundlage: ADR 0001–00
 ```
 src/core/        Spielzustand, Prozesse, Qualität, Wirtschaft, Speichern   ← reines TS, ohne Engine, Vitest
 src/modules/     kern-unabhängige Inhalte + Regeln je Modul (holz …)        ← Daten + kleine Regeln
-src/render/      Engine-Adapter (Babylon): Szene, Licht, Picking, Assets   ← dünn, austauschbar
+src/render/      Engine-Adapter (Three.js): Szene, Licht, Picking, Assets   ← dünn, austauschbar
 src/input/, ui/  Touch, HUD als DOM über dem Canvas                         ← mobile-ux
 public/data/     Stammdaten (JSON)       assets/  GLB/KTX2
 ```
@@ -36,5 +36,6 @@ Regeln: Spiellogik importiert nie die Engine. Die UI ist DOM, keine Engine-GUI (
 
 ## Bekannte technische Schulden / Risiken
 - Spike-Texturen sind unkomprimiert. Die KTX2-Pipeline (`@gltf-transform/cli`) kommt mit dem ersten Asset-Ticket.
-- Babylon lädt ungenutzte Texturlader mit (Bundle 382 kB gzip): Folge-Ticket Bundle-Diät.
+- Three.js hat monatliche Breaking Changes: Version gepinnt, Update nur per Ticket.
+- Physik ist nicht eingebunden; falls nötig, per ADR (Kandidat Rapier).
 - WebKit läuft nur in GitHub-CI, weil die Cloud-Sitzung den Download nicht erlaubt.
