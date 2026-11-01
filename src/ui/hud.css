@@ -197,7 +197,7 @@
 
 /* ---------- Ticket 013 (QA F1): Endprüfung mit Anschlagwinkel ---------- */
 .hud-endpruefung { position: absolute; z-index: 24; left: 50%; bottom: calc(var(--sab) + 10px); transform: translateX(-50%);
-  width: min(560px, 84vw); display: flex; gap: 12px; align-items: center; padding: 10px 12px; pointer-events: auto;
+  width: min(540px, 66vw); display: flex; gap: 12px; align-items: center; padding: 10px 12px; pointer-events: auto;
   background: var(--panel); border: 1.5px solid var(--accent); border-radius: 14px; box-shadow: 0 6px 24px rgb(0 0 0 / 45%); }
 .hud-endpruefung.schief { border-color: var(--warn); }
 .hud-endpruefung-bild { flex: none; background: #2a221b; border-radius: 10px; padding: 4px; line-height: 0; }
@@ -209,3 +209,7 @@
 .hud-endpruefung-text .riss { color: var(--bad); font-weight: 600; }
 .hud-endpruefung .zeile { display: flex; gap: 8px; margin-top: 6px; }
 .hud-endpruefung button { min-height: 44px; min-width: 44px; }
+/* Bezugsende wählen: noch nichts zu messen – Griff, Feintasten und Anreissen erst danach (Ticket 013) */
+.hud[data-phase='bezugsende'] .hud-massband-griff,
+.hud[data-phase='bezugsende'] .hud-leiste,
+.hud[data-phase='bezugsende'] .hud-lupe { display: none; }

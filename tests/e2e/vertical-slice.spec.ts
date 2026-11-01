@@ -16,7 +16,8 @@ declare global {
 // über den Weg erkannt, Züge über die Richtungsumkehr; gewartet wird nur per Polling auf Zustände.
 // Der Spielzustand wird über window.__spiel (nur ?debug=1) gelesen, nie gesetzt.
 
-const SPIEL = './spiel/?debug=1&saat=7';
+// ?test=1: Kamerafahrten ohne Dauer, dpr=1: weniger Pixel für die Software-GPU – der Ablauf selbst bleibt Touch (QA F9)
+const SPIEL = './spiel/?debug=1&saat=7&test=1&dpr=1';
 const LANG = { timeout: 60_000 };
 
 type Schritt = { t: 'down' | 'move' | 'up'; id: number; x: number; y: number } | { t: 'warte'; ms: number };
@@ -163,16 +164,30 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     await expect(page.locator('.hud-hinweis')).toContainText('Schritt 1/6');
     await gespeichert(page);
 
-    // 2) Bezugsende: Ende ohne Riss antippen
+    // 2) Bezugsende: erst das schiefe Ende prüfen (Anschlagwinkel zeigt den Spalt), dann das andere wählen
     const ws = z?.inventar.werkstuecke.find((w) => w.id === z?.arbeit?.werkstueckId);
     expect(ws).toBeDefined();
     const L = ws?.masse_mm.l ?? 2000;
-    const rissA = (ws?.enden.a.merkmale ?? []).some((m) => m.id === 'holz.merkmal.endriss');
-    const ende = rissA ? 'b' : 'a';
-    const tipp = await page.evaluate((mm) => window.__view?.weltNachBildschirm(mm) ?? null, ende === 'a' ? 40 : L - 40);
+    const wa = Math.abs(ws?.enden.a.winkel_grad ?? 0);
+    const wb = Math.abs(ws?.enden.b.winkel_grad ?? 0);
+    const ende = wa <= wb ? 'a' : 'b';
+    const schief = ende === 'a' ? 'b' : 'a';
+    const spalt = (Math.round(Math.tan((Math.max(wa, wb) * Math.PI) / 180) * 140 * 10) / 10).toFixed(1).replace('.', ',');
+    // 3D: Enden sind tatsächlich schräg gezeichnet (echter Winkel übergeben)
+    expect(await page.evaluate(() => window.__view?.zustand().winkel)).toEqual({ a: ws?.enden.a.winkel_grad, b: ws?.enden.b.winkel_grad });
+    await expect(page.locator('.hud-hinweis')).toContainText('Prüfe beide Enden');
+    const tipp = await page.evaluate((mm) => window.__view?.weltNachBildschirm(mm) ?? null, schief === 'a' ? 40 : L - 40);
     expect(tipp).not.toBeNull();
     if (!tipp) return;
     await tippen(page, tipp);
+    const pruefung = page.getByRole('dialog', { name: 'Brettende prüfen' });
+    await expect(pruefung).toBeVisible();
+    await expect(pruefung).toContainText(`Spalt ${spalt} mm – schief`);
+    expect(await phase(page)).toBe('bezugsende'); // Antippen wählt noch nicht
+    await pruefung.getByRole('button', { name: 'Anderes Ende' }).tap();
+    await expect(pruefung).toContainText('rechtwinklig');
+    await pruefung.getByRole('button', { name: 'Von hier messen' }).tap();
+    await expect(pruefung).toHaveCount(0);
     await expect.poll(() => phase(page), LANG).toBe('messen');
     expect((await zustand(page))?.arbeit?.bezugsende).toBe(ende);
     await expect(page.locator('.hud-hinweis')).toContainText('Schritt 2/6');
@@ -253,6 +268,8 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     if (!e) return;
     const karte = page.getByRole('dialog', { name: 'Ergebnis' });
     await expect(karte).toBeVisible();
+    // Kein Hinweis über der Karte (QA F2)
+    await expect(page.locator('.hud-hinweis')).toBeHidden();
     const stufen: Record<string, string> = { A: 'A – Meisterhaft', B: 'B – Sauber', C: 'C – Brauchbar', D: 'D – Mangelhaft', ausschuss: 'Ausschuss' };
     await expect(karte.locator('.hud-stufe')).toHaveText(stufen[e.qualitaet.stufe] ?? '?');
     await expect(karte.locator('.hud-q')).toHaveText(`Qualität ${String(Math.round(e.qualitaet.q))} / 100`);
@@ -261,6 +278,10 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     // Karte zeigt die Ist-Länge auf 0,1 mm gerundet
     const ist = (Math.round(e.laenge_ist_mm * 10) / 10).toFixed(1).replace('.', ',').replace(/,0$/, '');
     await expect(karte.locator('.hud-ursache')).toContainText(`Ist ${ist} mm (Soll 600)`);
+    // Einstieg: Toleranz ± 2 mm; ausserhalb davon nennt die Karte die Kappung
+    expect(z?.auftraege[0]?.toleranz).toEqual({ delta_l_mm: 2 });
+    const abw = e.messwerte['abweichung_l_mm'] ?? 0;
+    if (Math.abs(abw) > 2 && e.qualitaet.stufe !== 'ausschuss') await expect(karte.locator('.hud-ursache')).toContainText('Ausserhalb der Toleranz');
     const teil = z?.inventar.werkstuecke.find((w) => w.id === e.teilId);
     expect(teil?.masse_mm.l).toBe(e.laenge_ist_mm);
     expect(await page.evaluate(() => window.__view?.zustand().brett.schnittIstMm)).toBeCloseTo(e.laenge_ist_mm, 3);
@@ -311,6 +332,8 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
       for (const t of ['pointerdown', 'pointerup']) {
         flaeche.dispatchEvent(new PointerEvent(t, { pointerId: 4, pointerType: 'touch', clientX: pt.x, clientY: pt.y, bubbles: true, cancelable: true }));
       }
+      // Endprüfung bestätigen → Bezugsende gewählt (entprelltes Autosave wartet)
+      document.querySelector<HTMLButtonElement>('.hud-endpruefung-wahl')?.click();
       const wartetVorher = window.__spiel?.speicher().ausstehend ?? false;
       Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));
@@ -360,10 +383,70 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     expect((await page.evaluate(() => window.__spiel?.speicher().modus))).toBe('gesperrt');
     expect((await zustand(page))?.inventar.geld).toBe(40);
     await banner.getByRole('button', { name: 'Neu beginnen' }).tap();
+    // erst nach Rückfrage (QA F5)
+    await expect(banner).toContainText('Wirklich neu beginnen?');
+    expect(await page.evaluate(() => window.__spiel?.speicher().modus)).toBe('gesperrt');
+    await banner.getByRole('button', { name: 'Ja, neu beginnen' }).tap();
     await expect(banner).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => window.__spiel?.speicher().modus), LANG).toBe('normal');
     await gespeichert(page);
     expect(fehler).toEqual([]);
+  });
+
+  test('zu neuer Spielstand: Banner „Neu beginnen“ mit Rückfrage, alter Stand bleibt als Sicherung (QA F5)', async ({ page }) => {
+    test.skip(hochkant(page), 'Querformat-Ablauf');
+    await page.goto(SPIEL);
+    if (!(await bereit(page))) {
+      test.skip(true, 'Browser ohne WebGL 2');
+      return;
+    }
+    await gespeichert(page);
+    // gespeicherten Stand als „aus einer neueren Version“ markieren (Kern-Schema 999)
+    await page.evaluate(
+      () =>
+        new Promise<void>((ok) => {
+          const r = indexedDB.open('handcraft-life', 1);
+          r.onsuccess = () => {
+            const tx = r.result.transaction('spielstand', 'readwrite');
+            const store = tx.objectStore('spielstand');
+            const g = store.get('aktuell');
+            g.onsuccess = () => {
+              const datei = JSON.parse(String(g.result)) as { kern: { schema: number } };
+              datei.kern.schema = 999;
+              store.put(JSON.stringify(datei), 'aktuell');
+            };
+            tx.oncomplete = () => {
+              r.result.close();
+              ok();
+            };
+          };
+        }),
+    );
+    await page.reload();
+    expect(await bereit(page)).toBe(true);
+    const banner = page.locator('.spiel-speicherhinweis');
+    await expect(banner).toContainText('neueren Version');
+    await banner.getByRole('button', { name: 'Neu beginnen' }).tap();
+    await banner.getByRole('button', { name: 'Abbrechen' }).tap();
+    await expect(banner).toContainText('neueren Version');
+    await banner.getByRole('button', { name: 'Neu beginnen' }).tap();
+    await banner.getByRole('button', { name: 'Ja, neu beginnen' }).tap();
+    await expect(banner).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__spiel?.speicher().modus), LANG).toBe('normal');
+    const sicherungen = await page.evaluate(
+      () =>
+        new Promise<string[]>((ok) => {
+          const r = indexedDB.open('handcraft-life', 1);
+          r.onsuccess = () => {
+            const k = r.result.transaction('sicherung').objectStore('sicherung').getAllKeys();
+            k.onsuccess = () => {
+              ok(k.result.map(String));
+              r.result.close();
+            };
+          };
+        }),
+    );
+    expect(sicherungen.some((s) => s.startsWith('zuNeu'))).toBe(true);
   });
 
   test('Hochformat: Hinweis „Bitte quer halten“', async ({ page }) => {

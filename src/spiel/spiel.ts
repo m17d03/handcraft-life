@@ -492,6 +492,7 @@ export class Spiel implements SpielDebug {
     }
 
     // ---- HUD
+    hud.element.dataset['phase'] = phase ?? 'keine';
     const modus = hudModusFuer(a, this.anDerBank, this.saegenFrei);
     this.modusJetzt = modus;
     hud.modus(modus);
