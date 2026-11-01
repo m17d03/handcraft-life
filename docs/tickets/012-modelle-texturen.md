@@ -3,7 +3,7 @@ id: 012
 titel: Werkstatt-Assets – Säge, Massband, Bleistift, Werkbank, Holz- und Raumtexturen (per Skript, Stil A)
 agent: asset-artist
 meilenstein: Phase 1 – Vertical Slice 0.1
-status: open
+status: done
 reifegrad: Implementiert
 blocked_by: []
 branch: ticket/012-assets
@@ -30,19 +30,24 @@ reproduzierbar per Skript erzeugt (kein Blender in dieser Umgebung verfügbar), 
 - Darf nicht ändern: `src/`, Projektdokumente, ADRs
 
 ## Abnahmekriterien
-- [ ] GLB: Fuchsschwanz (Blatt mit Zahnung als Textur/Alpha, Holzgriff), Massband (Gehäuse, ausziehbares Band als
+- [x] GLB: Fuchsschwanz (Blatt mit Zahnung als Textur/Alpha, Holzgriff), Massband (Gehäuse, ausziehbares Band als
       eigenes Mesh, Haken), Bleistift, Werkbank (Platte Eiche, Gestell, Vorderzange angedeutet); Massstab 1 Einheit = 1 m,
       Ursprung sinnvoll (Griffpunkt), Namen der Knoten dokumentiert
-- [ ] Dreiecke: Säge ≤ 5 000, Massband ≤ 3 000, Bleistift ≤ 500, Werkbank ≤ 4 000; Materialien ≤ 2 je Objekt
-- [ ] Texturen: Fichte (Brett, Längs- und Hirnholz), Eiche (Werkbank), Wand/Boden – je Albedo + Normal (+ Rauheit),
+- [x] Dreiecke: Säge ≤ 5 000, Massband ≤ 3 000, Bleistift ≤ 500, Werkbank ≤ 4 000; Materialien ≤ 2 je Objekt
+- [x] Texturen: Fichte (Brett, Längs- und Hirnholz), Eiche (Werkbank), Wand/Boden – je Albedo + Normal (+ Rauheit),
       1024², kachelbar, Stil-A-Palette; Gesamtgrösse `public/assets/` ≤ 6 MB
-- [ ] `npm run assets:build` erzeugt alles reproduzierbar (fester Seed)
-- [ ] `assets/LICENSES.md`: jede Datei als „eigen erzeugt (Skript …), Lizenz CC0“
-- [ ] Vorschau: eine Screenshot-Seite oder PNG je Asset in `docs/art/assets-phase1.md` (Chromium-Render erlaubt),
+- [x] `npm run assets:build` erzeugt alles reproduzierbar (fester Seed)
+- [x] `assets/LICENSES.md`: jede Datei als „eigen erzeugt (Skript …), Lizenz CC0“
+- [x] Vorschau: eine Screenshot-Seite oder PNG je Asset in `docs/art/assets-phase1.md` (Chromium-Render erlaubt),
       gekennzeichnet als „Asset-Vorschau“
-- [ ] `npm run check` bleibt grün
+- [x] `npm run check` bleibt grün
 
 ## Nicht Teil dieses Tickets
 Einbau in die Szene (013), Hände/Figur, Sounds.
 
 ## Protokoll
+- 2026-11-01 asset-artist (nach API-Limit fortgesetzt): 4 GLB + 12 KTX2, 3,61 MB, byte-identisch reproduzierbar.
+  devDependencies: @gltf-transform/core+extensions 4.5.1, meshoptimizer 1.3.0, ktx2-encoder 0.6.0.
+- QA: ABNAHME EMPFOHLEN. GPU-Speicher iPhone ≈ 20–28 MB. Hinweise für 013: Massband-Band steht im GLB auf 1 m (scale.z)
+  → beim Laden auf 0 setzen; Basis-Transcoder (three/examples/jsm/libs/basis) nach public kopieren (+0,58 MB).
+- Director: ESLint-Zeile für tools/**/*.mjs auf main ergänzt.
