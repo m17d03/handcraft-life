@@ -43,9 +43,21 @@ export interface WerkstattViewZustand {
   /** gerenderte Frames seit Start (zählt nur Frames mit gültigem WebGL-Kontext) */
   frames: number;
   kontextVerloren: boolean;
+  /** Ticket 013: 'modelle' = GLB/KTX2 aus Ticket 012 eingebaut, 'platzhalter' = Ladefehler, Primitive. */
+  assets: 'modelle' | 'platzhalter';
+  /** Angezeigte Endrisse (mm ab Ende a bzw. b). */
+  risse: { a: number | null; b: number | null };
 }
 
-export interface WerkstattViewDebug extends WerkstattView {
+/**
+ * Ergänzung Ticket 013 (zusätzlich zur verbindlichen View-API, ändert keine Signatur): Endrisse am
+ * Brettende sichtbar machen (holz-brett-zuschnitt §3 „Brett prüfen“). Länge in mm ab dem Ende, null = keiner.
+ */
+export interface WerkstattViewZusatz {
+  endrisseZeigen(risse: { a: number | null; b: number | null }): void;
+}
+
+export interface WerkstattViewDebug extends WerkstattView, WerkstattViewZusatz {
   zustand(): WerkstattViewZustand;
   /** Bildschirmpunkt (CSS-px) der Mitte eines Objekts oder null, wenn nicht sichtbar. */
   bildschirmpunktVon(id: string): { x: number; y: number } | null;

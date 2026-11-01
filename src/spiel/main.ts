@@ -51,6 +51,8 @@ async function start(): Promise<void> {
     const view = await erzeugeWerkstattView(canvas, {
       perf,
       aufloesung: leseAufloesungsParameter(suche),
+      assetBasis: import.meta.env.BASE_URL,
+      beiAssetFehler: (e) => { console.warn('Assets nicht geladen, Platzhalter aktiv:', e); },
       beiBereit: () => {
         melde('');
         body.dataset['state'] = 'ready';
