@@ -4,6 +4,11 @@ Status: **Freigegeben** (Mensch, 2026-11-01) (Phase 0). Die vollständige Kriter
 P/U/S/G mit Messmethode und Startphase) steht in `docs/qa/quality-standards-entwurf.md` und gilt mit
 der Freigabe als verbindlich. Playtest-Vorlage: `docs/qa/playtest-vorlage.md`.
 
+## Referenzgerät
+**iPhone 15 Pro Max** (A17 Pro, 6,7″, 2796 × 1290 px, Pixeldichte 3, ProMotion bis 120 Hz) – festgelegt
+vom Menschen am 2026-11-01. Alle (Gerät)-Kriterien gelten auf diesem Gerät. Hinweis: Es ist ein starkes Gerät;
+für ältere iPhones gelten die Budgets ohne Garantie. Pixeldichte im Spiel bleibt auf 2 begrenzt (Akku, Wärme).
+
 ## Budgets (CLAUDE.md, mit Präzisierungen aus Ticket 004)
 | Grösse | Ziel | Harte Grenze | Messung |
 |---|---|---|---|
@@ -26,5 +31,4 @@ Siehe CLAUDE.md und `docs/qa/quality-standards-entwurf.md` §5 (je Statusstufe).
 macht nichts "fertig".
 
 ## Offen
-- Referenz-iPhone (unterste Grenze) legt der Mensch fest.
 - Folge-Ticket: eigener CI-Schritt für `tests/perf/`.

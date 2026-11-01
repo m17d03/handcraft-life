@@ -18,3 +18,4 @@ Index aller Entscheidungen; Details in `docs/decisions/`. Nur der Director setzt
 | 2026-10-31 | Phase-0-Konzeptbilder auf 5 Kernansichten gekürzt, die übrigen 7 als Kurzprompts | UMSETZUNGSPLAN Punkt 5 |
 | 2026-11-01 | Phase 0 vom Menschen freigegeben („wie empfohlen“); Engine nach bester Performance statt Gerätetest aller drei Engines | Freigabe des Menschen |
 | 2026-11-01 | 3D-Modelle zuerst prozedural bzw. per Skript als GLB; Blender, sobald ein erreichbarer Konnektor existiert | Blender-Konnektor in der Cloud-Sitzung nicht verfügbar |
+| 2026-11-01 | Referenzgerät für Budgets: iPhone 15 Pro Max; Pixeldichte im Spiel ≤ 2 | Angabe des Menschen |
