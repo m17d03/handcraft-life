@@ -2,6 +2,21 @@ import { FpsMeter } from './fps';
 
 const MAX_ERRORS = 5;
 
+/** Zusatzzeilen (z. B. Speicherstatus, Ticket 013), auch vor dem Einbinden des Overlays setzbar. */
+const zusatz = new Map<string, string>();
+let zusatzEl: HTMLElement | null = null;
+
+function zusatzZeichnen(): void {
+  if (zusatzEl) zusatzEl.textContent = [...zusatz.values()].join('\n');
+}
+
+/** Setzt eine benannte Zeile im Debug-Overlay (null entfernt sie). Ohne Overlay nur gemerkt. */
+export function setzeDebugZeile(schluessel: string, text: string | null): void {
+  if (text === null) zusatz.delete(schluessel);
+  else zusatz.set(schluessel, text);
+  zusatzZeichnen();
+}
+
 /**
  * Kleines Debug-Overlay für das iPhone: fps, schlechtester Frame, Fehler.
  * Wird nur mit ?debug=1 eingebunden.
@@ -12,9 +27,14 @@ export function installDebugOverlay(root: HTMLElement = document.body): HTMLElem
   box.setAttribute('role', 'status');
   const stats = document.createElement('div');
   stats.className = 'debug-stats';
+  const info2 = document.createElement('div');
+  info2.className = 'debug-zusatz';
+  info2.style.whiteSpace = 'pre-line';
+  zusatzEl = info2;
+  zusatzZeichnen();
   const errors = document.createElement('ol');
   errors.className = 'debug-errors';
-  box.append(stats, errors);
+  box.append(stats, info2, errors);
   root.append(box);
 
   const meter = new FpsMeter();

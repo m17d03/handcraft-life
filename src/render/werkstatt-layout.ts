@@ -67,7 +67,7 @@ export const ARBEITSANSICHT = {
   /** Dauer der Kamerafahrt (Abnahme: ≤ 600 ms) */
   fahrtMs: 450,
   /** Rand links/rechts neben dem Brett */
-  randM: 0.06,
+  randM: 0.2, // Brettenden bleiben ausserhalb von Notch/Randzone (Bezugsende antippen)
   minAbstand: 0.55,
   maxAbstand: 1.6,
 } as const;
