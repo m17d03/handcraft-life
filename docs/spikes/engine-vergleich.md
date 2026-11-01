@@ -68,6 +68,9 @@ Erläuterungen:
   Apple-GPU so bleibt, zeigt nur der iPhone-Test.
 - WebKit-Messung (verbindlich laut QS-Entwurf) läuft erst in GitHub-CI.
 
+> **QA-Gegenmessung (Ticket 005, unabhängig):** Babylon MSAA Ø 161 / p95 183 ms, Three MSAA Ø 130 / p95 150 ms,
+> PlayCanvas Ø 246 / p95 283 ms. Three.js war dort ≈ 20 % schneller als Babylon – nicht „gleichauf“.
+
 ## 3. Bewertung ohne iPhone (Aufwand, TS, Agenten)
 
 | Kriterium | Babylon.js | PlayCanvas | Three.js |

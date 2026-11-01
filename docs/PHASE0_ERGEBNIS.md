@@ -57,8 +57,9 @@ Git-Worktrees, ohne Dateikonflikte. QA prüft unabhängig und repariert nichts.
 ## 4. Technischer Architekturvorschlag
 - **Bestätigt:** Vite + TypeScript strict + Vitest + Playwright. WebKit läuft in GitHub-CI, die
   Veröffentlichung auf Pages.
-- **Engine (Vorschlag): Babylon.js.** Im Spike gleich schnell wie Three.js, mit eingebautem Picking,
-  Kantenglättung, Physik und stabiler TypeScript-API; PlayCanvas war 60–80 % langsamer.
+- **Engine (Vorschlag): Babylon.js.** Im Spike etwas langsamer als Three.js (5–20 % je nach Messlauf),
+  dafür mit eingebautem Picking, Kantenglättung, Physik und stabiler TypeScript-API; PlayCanvas war
+  60–80 % langsamer.
   Die Vorabwertung ist knapp (Babylon 2,0 · Three.js 1,9 · PlayCanvas 1,65 von 2,5). **Dein iPhone-Test
   zählt 50 %** und entscheidet nach einer festen Regel (ADR 0001).
 - **Spiellogik ohne Engine** (reines TS, testbar), die Engine hängt an einem dünnen Adapter. Das macht
@@ -71,7 +72,7 @@ Git-Worktrees, ohne Dateikonflikte. QA prüft unabhängig und repariert nichts.
 |---|---|---|---|---|
 | Download bis spielbar (gzip) | 382 kB | 286 kB | 145 kB | < 15 MB |
 | Draw Calls / Dreiecke | 27 / 1 428 | 26 / 1 416 | 27 / 1 428 | < 80 / < 150 000 |
-| Frame-Zeit (nur Vergleich) | 155 ms | 250 ms | 148 ms | – |
+| Frame-Zeit (nur Vergleich, QA-Lauf) | 161 ms | 246 ms | 130 ms | – |
 
 ## 5. Visuelle Art Direction mit Beispielbildern
 Drei Varianten als Moodboard: **A „Honigwerkstatt“** (warme Nachmittagssonne, empfohlen),
@@ -149,7 +150,7 @@ deinem Test.
 
 | # | Frage | Empfehlung |
 |---|---|---|
-| 1 | Engine | **Babylon.js**, falls dein Test keinen klaren Vorteil für Three.js zeigt (Regel ADR 0001) |
+| 1 | Engine | **Babylon.js**, falls dein Test keinen klaren Vorteil für Three.js zeigt (Regel ADR 0001). Bitte besonders Babylon und Three.js vergleichen – es ist knapp |
 | 2 | Steuerung / Format | **Konzept B, nur Querformat** im Vertical Slice (ADR 0004) |
 | 3 | Stil | **Variante A „Honigwerkstatt“** |
 | 4 | MVP-Umfang | **MVP = Ende Phase 2**, Holzbank gestrichen, Phase 4 **nur Fasan** |

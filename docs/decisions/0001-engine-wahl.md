@@ -32,7 +32,7 @@ PlayCanvas nur, wenn es als einzige Engine die Gerätegrenzen einhält.
 
 ## Begründung
 - Messbar gleich: Draw Calls und Dreiecke (gleiche Geometrie), Grafik im Chromium-Vergleich gleichwertig.
-- Frame-Zeit (relativ): Babylon ≈ Three, PlayCanvas 60–80 % langsamer.
+- Frame-Zeit (relativ): Three.js je nach Lauf 5–20 % schneller als Babylon (unabhängige QA-Messung: Ø 130 vs. 161 ms, p95 150 vs. 183 ms, MSAA); PlayCanvas 60–80 % langsamer. Der Vorsprung von Babylon in der Teilsumme beruht allein auf Aufwand/TS/Agenten-Kriterien – der iPhone-Test muss gezielt Babylon gegen Three.js vergleichen.
 - Bundle: alle drei weit unter 15 MB; der Vorsprung von Three.js (≈ 240 kB) wiegt 10 %.
 - Ausschlaggebend bei Gleichstand: Babylon bringt Physik (Havok), Picking, AA-Verfahren und GUI aus
   einer Hand mit stabiler, in TS geschriebener API. Das senkt Eigenbau und Pflege für ein Projekt, das
