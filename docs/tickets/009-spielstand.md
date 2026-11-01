@@ -3,7 +3,7 @@ id: 009
 titel: Spielstand – IndexedDB, Schema-Versionen, Migrationskette, Sicherung, Fixtures
 agent: engine-engineer
 meilenstein: Phase 1 – Vertical Slice 0.1
-status: open
+status: done
 reifegrad: Implementiert
 blocked_by: [008]
 branch: ticket/009-spielstand
@@ -24,17 +24,23 @@ ADR 0003 (`docs/decisions/0003-speicherformat.md`, verbindlich), `docs/design/mo
 - Darf nicht ändern: übriges `src/`, Projektdokumente, ADRs
 
 ## Abnahmekriterien
-- [ ] `SpielstandDatei` mit Kern- und Modulabschnitten, je eigene `schema`-Version; Migrationskette n−1 → n
-- [ ] Store `spielstand` (Schlüssel `aktuell`) und `sicherung` (Rohkopie vor Migration + letzte 3 Autosaves)
-- [ ] Atomar: Schreiben in einer Transaktion; nie halber Zustand (Test mit simuliertem Abbruch)
-- [ ] Unbekannter Modulabschnitt bleibt erhalten; zu neue Version → nur lesend + Hinweis (S7); IndexedDB-Fehler →
+- [x] `SpielstandDatei` mit Kern- und Modulabschnitten, je eigene `schema`-Version; Migrationskette n−1 → n
+- [x] Store `spielstand` (Schlüssel `aktuell`) und `sicherung` (Rohkopie vor Migration + letzte 3 Autosaves)
+- [x] Atomar: Schreiben in einer Transaktion; nie halber Zustand (Test mit simuliertem Abbruch)
+- [x] Unbekannter Modulabschnitt bleibt erhalten; zu neue Version → nur lesend + Hinweis (S7); IndexedDB-Fehler →
       Spiel läuft weiter mit Hinweis (S8)
-- [ ] `navigator.storage.persist()` wird versucht, Ergebnis abfragbar
-- [ ] Fixture `tests/fixtures/saves/v1.json` + Test „alter Spielstand lädt“ (S6)
-- [ ] Autosave-API: `speichern(zustand)` entprellt (≤ 1×/s) plus `sofortSpeichern()` für `visibilitychange`/`pagehide`
-- [ ] `npm run check` grün
+- [x] `navigator.storage.persist()` wird versucht, Ergebnis abfragbar
+- [x] Fixture `tests/fixtures/saves/v1.json` + Test „alter Spielstand lädt“ (S6)
+- [x] Autosave-API: `speichern(zustand)` entprellt (≤ 1×/s) plus `sofortSpeichern()` für `visibilitychange`/`pagehide`
+- [x] `npm run check` grün
 
 ## Nicht Teil dieses Tickets
 Export/Import (Phase 2), mehrere Spielstände.
 
 ## Protokoll
+- 2026-11-01 engine-engineer (2. Anlauf nach API-Limit): src/core/save, 5 Fixtures, 39 Tests.
+- QA Runde 1: NACHARBEIT – (hoch) älterer Stand überschreibt neueren; (mittel) keine Neuverbindung nach close (iOS);
+  (mittel) Speichern vor laden() überschreibt still; Sicherungen unbegrenzt; Rotation nach Uhrzeit. Echte IndexedDB im
+  Browser (Chromium) von QA geprüft: Reload, Rotation, harter Abbruch – ok.
+- Behoben (7928483), 51 Tests. Nachprüfung Director: QA-Suite 9/9 (zwei Fälle um laden() ergänzt – beabsichtigte Sperre
+  vor dem Laden; Uhr-Rücksprung-Fall mit verschärfter Erwartung).
