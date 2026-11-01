@@ -38,7 +38,8 @@ export const rohbrettFehlerRegel: ErzeugungsRegel = {
   anwenden(ws, material, zufall) {
     const neu = { ...ws, enden: { a: { ...ws.enden.a }, b: { ...ws.enden.b } }, merkmale: [...ws.merkmale] };
     if (zufall() < datenwert(material.werte, 'endriss_p', material.id)) {
-      const ende: EndeId = zufall() < 0.5 ? 'a' : 'b';
+      // Endrisse sitzen am unbearbeiteten, schiefen Werksende (dem Ende mit dem grösseren Winkelfehler).
+      const ende: EndeId = Math.abs(neu.enden.a.winkel_grad) >= Math.abs(neu.enden.b.winkel_grad) ? 'a' : 'b';
       const min = datenwert(material.werte, 'endriss_min_mm', material.id);
       const max = datenwert(material.werte, 'endriss_max_mm', material.id);
       const laenge = Math.round(zwischen(zufall, min, max));

@@ -26,6 +26,8 @@ export const FICHTE_BRETT: MaterialDef = {
     ast_p: 0.3,
     /** Unbearbeitetes Werksende: Bezugsfehler −2…+2 mm. */
     ende_fehler_max_mm: 2,
+    ende_gut_max_mm: 0.3,
+    ende_schlecht_min_mm: 1,
   },
 };
 
