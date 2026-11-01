@@ -1,0 +1,190 @@
+/* HUD (Ticket 011) – Stil A „Honigwerkstatt“, Werte aus dem Steuerungs-Mockup B.
+   1 CSS-px = 1 pt auf dem iPhone. Alle Bedienelemente über Safe-Area-Variablen versetzt (U4). */
+.hud {
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --rand: 20px; /* Sperrzone gegen Safaris Rand-Wischgesten */
+  --fg: #f3e9dc;
+  --muted: #c9b8a5;
+  --accent: #d9a35b;
+  --accent-hi: #ffd08a;
+  --panel: rgb(31 26 21 / 90%);
+  --dunkel: #1f1a15;
+  --ok: #8fd18b;
+  --warn: #ffb36b;
+  --bad: #ff8a7a;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.25;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.hud.hud-sim-notch { --sal: 59px; --sar: 59px; --sab: 21px; }
+.hud * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+.hud [hidden], .hud .aus { display: none !important; }
+.hud-safe-probe { position: fixed; visibility: hidden; pointer-events: none; padding: var(--sat) var(--sar) var(--sab) var(--sal); }
+
+.hud button {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 16px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1.5px solid rgb(217 163 91 / 75%);
+  border-radius: 14px;
+  min-width: 56px;
+  min-height: 56px;
+  padding: 0 16px;
+  touch-action: none;
+  transition: transform 60ms ease-out, background-color 60ms;
+}
+.hud button.gedrueckt, .hud button:active { transform: scale(0.94); background-color: #4a3826; border-color: var(--accent-hi); }
+.hud button:disabled { opacity: 0.5; }
+.hud .hud-primaer { background: rgb(217 163 91 / 95%); color: var(--dunkel); font-weight: 700; }
+.hud .hud-primaer.gedrueckt { background: var(--accent-hi); }
+
+/* ---------- Spielfläche + Feedback ---------- */
+.hud-flaeche { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+.hud[data-modus='ergebnis'] .hud-flaeche { background: rgb(0 0 0 / 35%); }
+.hud-feedback { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.hud-stick { position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%;
+  border: 2px solid rgb(243 233 220 / 60%); background: rgb(0 0 0 / 25%); }
+.hud-stick-knopf { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+  background: rgb(217 163 91 / 90%); box-shadow: 0 0 0 4px rgb(255 208 138 / 30%); }
+.hud-finger { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+  border: 2px solid rgb(255 208 138 / 80%); background: rgb(255 208 138 / 15%); }
+.hud-haltering { position: absolute; width: 68px; height: 68px; margin: -34px 0 0 -34px; border-radius: 50%;
+  border: 4px solid var(--accent-hi); clip-path: inset(0 100% 0 0); animation: hud-halten 300ms linear forwards; }
+.hud-haltering.fertig { border-color: var(--ok); }
+@keyframes hud-halten { to { clip-path: inset(0 0 0 0); } }
+.hud-tipp { position: absolute; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+  border: 2px solid var(--accent-hi); animation: hud-tipp 400ms ease-out forwards; }
+@keyframes hud-tipp { from { transform: scale(0.5); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+
+.hud-fadenkreuz { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  border: 2px solid rgb(243 233 220 / 85%); transition: transform 80ms, border-color 80ms; }
+.hud-fadenkreuz.ziel { transform: scale(1.6); border-color: var(--accent-hi); }
+.hud-zonenhinweis { position: absolute; bottom: calc(var(--sab) + 18px); font-size: 15px; padding: 6px 12px; border-radius: 999px;
+  background: rgb(0 0 0 / 60%); transition: opacity 300ms; }
+.hud-zonenhinweis.links { left: calc(var(--sal) + var(--rand) + 16px); }
+.hud-zonenhinweis.rechts { right: calc(var(--sar) + var(--rand) + 120px); }
+.hud-zonenhinweis.benutzt { opacity: 0; }
+
+/* ---------- Kopfzeile ---------- */
+.hud-oben { position: absolute; z-index: 10; top: calc(var(--sat) + 10px); left: calc(var(--sal) + 10px); right: calc(var(--sar) + 10px);
+  display: flex; align-items: flex-start; gap: 8px; }
+.hud-oben-links, .hud-oben-rechts { flex: 0 0 auto; min-width: 110px; display: flex; }
+.hud-oben-rechts { justify-content: flex-end; }
+.hud-oben-mitte { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.hud-schritte { display: flex; gap: 4px; }
+.hud-schritte span { font-size: 15px; padding: 4px 10px; border-radius: 999px; color: var(--muted); background: rgb(0 0 0 / 60%); }
+.hud-schritte span.jetzt { color: var(--dunkel); background: var(--accent); font-weight: 600; }
+.hud-schritte span.erledigt { color: var(--ok); }
+.hud-auftrag { font-size: 15px; padding: 4px 12px; border-radius: 10px; background: var(--panel); max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-geld { font-size: 17px; font-weight: 700; padding: 6px 12px; border-radius: 10px; background: var(--panel); color: var(--accent-hi);
+  border: 1px solid rgb(217 163 91 / 50%); font-variant-numeric: tabular-nums; }
+.hud-hinweis { position: absolute; z-index: 30; left: 50%; top: calc(var(--sat) + 84px); transform: translateX(-50%); max-width: 70vw;
+  padding: 8px 16px; font-size: 15px; text-align: center; background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; }
+
+.hud .hud-aktionstaste { position: absolute; z-index: 10; right: calc(var(--sar) + var(--rand) + 14px); bottom: calc(var(--sab) + 70px);
+  width: 88px; min-height: 88px; border-radius: 50%; padding: 0 6px; font-size: 15px; font-weight: 600; line-height: 1.15;
+  background: rgb(217 163 91 / 95%); color: var(--dunkel); border-color: var(--accent-hi); }
+
+/* ---------- Messen ---------- */
+.hud-massband-griff { position: absolute; z-index: 12; width: 56px; height: 72px; margin: -36px 0 0 -28px; pointer-events: auto; touch-action: none; }
+.hud-massband-griff span { position: absolute; left: 4px; top: 0; width: 48px; height: 32px; border-radius: 9px; background: var(--accent);
+  color: var(--dunkel); font-weight: 700; font-size: 18px; text-align: center; line-height: 32px; }
+.hud-massband-griff::after { content: ''; position: absolute; left: 24px; top: 32px; width: 8px; height: 40px; background: #333; border-radius: 2px; }
+.hud-massband-griff.aktiv span { background: var(--accent-hi); box-shadow: 0 0 0 5px rgb(255 208 138 / 45%); }
+
+.hud-lupe { position: absolute; z-index: 35; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; overflow: hidden;
+  border: 3px solid var(--accent-hi); background: #f2c400; box-shadow: 0 6px 24px rgb(0 0 0 / 55%); display: none; }
+.hud-lupe.sichtbar { display: block; }
+.hud-lupe-skala { position: absolute; inset: 0;
+  background-image:
+    linear-gradient(90deg, #1b1b1b 0 2px, transparent 2px), linear-gradient(90deg, #1b1b1b 0 2px, transparent 2px),
+    linear-gradient(90deg, #1b1b1b 0 1px, transparent 1px), linear-gradient(90deg, #1b1b1b 0 1px, transparent 1px);
+  background-size: 80px 46px, 40px 34px, 8px 24px, 4px 12px;
+  background-repeat: repeat-x; background-position-y: 0; }
+.hud-lupe-zahlen span { position: absolute; top: 48px; font-size: 15px; font-weight: 700; color: #1b1b1b; transform: translateX(-50%); }
+.hud-lupe-nadel { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #b02a1b; }
+.hud-lupe-wert { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; font-weight: 700; color: #1b1b1b; font-size: 16px; }
+
+.hud-messwert { position: absolute; z-index: 12; bottom: calc(var(--sab) + 14px); left: 50%; transform: translateX(-50%);
+  font-size: 26px; font-weight: 700; padding: 4px 16px; border-radius: 10px; background: rgb(0 0 0 / 65%); font-variant-numeric: tabular-nums; }
+
+.hud-leiste { position: absolute; z-index: 12; bottom: calc(var(--sab) + 14px); display: flex; gap: 10px; }
+.hud-leiste.links { left: calc(var(--sal) + var(--rand) + 14px); }
+.hud-leiste.rechts { right: calc(var(--sar) + var(--rand) + 14px); }
+.hud-leiste button { font-size: 17px; font-weight: 600; }
+
+/* ---------- Blatt ansetzen ---------- */
+.hud-ansetzen { position: absolute; z-index: 12; left: 50%; top: calc(var(--sat) + 136px); width: min(440px, 56vw); height: 120px; transform: translateX(-50%);
+  border-radius: 20px; overflow: hidden; pointer-events: auto; touch-action: none; border: 3px solid var(--accent-hi);
+  background: repeating-linear-gradient(176deg, #e9c896 0 9px, #d7ae78 9px 10px); box-shadow: 0 6px 24px rgb(0 0 0 / 50%); }
+.hud-ansetzen.aktiv { border-color: #fff; }
+.hud-ansetzen .seite { position: absolute; top: 8px; font-size: 15px; font-weight: 600; color: var(--dunkel); background: rgb(255 255 255 / 55%);
+  padding: 2px 8px; border-radius: 6px; }
+.hud-ansetzen .seite.links { left: 10px; }
+.hud-ansetzen .seite.rechts { right: 10px; }
+.hud-strich { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #1b1b1b; }
+.hud-blatt { position: absolute; left: 50%; top: 0; bottom: 0; width: 0; transition: transform 40ms linear; }
+.hud-fuge { position: absolute; top: 0; bottom: 0; left: 0; transform: translateX(-50%); background: rgb(60 70 80 / 45%);
+  border-left: 2px solid #5b6670; border-right: 2px solid #5b6670; }
+.hud-ansetzen-text { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 15px; font-weight: 600; color: var(--fg); }
+.hud-ansetzen-text { background: rgb(0 0 0 / 60%); margin: 0 auto; width: max-content; padding: 2px 10px; border-radius: 8px; }
+
+/* ---------- Sägen ---------- */
+.hud-saegespur { position: absolute; z-index: 12; top: calc(var(--sat) + 96px); bottom: calc(var(--sab) + 8px);
+  left: calc(50% + 10px); right: calc(var(--sar) + var(--rand) + 4px); border-radius: 22px; border: 2px dashed rgb(255 208 138 / 55%);
+  pointer-events: auto; touch-action: none; }
+.hud-saegespur.aktiv { border-style: solid; border-color: var(--accent-hi); background: rgb(255 208 138 / 8%); }
+.hud-saegespur.zug { animation: hud-zug 220ms ease-out; }
+@keyframes hud-zug { from { background-color: rgb(255 208 138 / 30%); } to { background-color: rgb(255 208 138 / 8%); } }
+.hud-spur-mitte { position: absolute; left: 50%; top: 12px; bottom: 12px; width: 0; border-left: 3px dotted rgb(255 208 138 / 70%); }
+.hud-spur-daumen { position: absolute; left: 0; top: 0; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+  background: rgb(217 163 91 / 85%); display: none; }
+.hud-saegespur.aktiv .hud-spur-daumen { display: block; }
+.hud-spur-text { position: absolute; right: 12px; bottom: 8px; font-size: 15px; text-align: right; padding: 4px 10px; border-radius: 10px;
+  background: rgb(0 0 0 / 60%); }
+.hud .hud-stuetzen { position: absolute; z-index: 12; left: calc(var(--sal) + var(--rand) + 14px); bottom: calc(var(--sab) + 14px);
+  width: 96px; height: 96px; border-radius: 50%; padding: 0; font-size: 15px; font-weight: 600; line-height: 1.15; }
+.hud .hud-stuetzen.gehalten { background: var(--accent); color: var(--dunkel); transform: scale(0.95); }
+.hud-saegeanzeige { position: absolute; z-index: 12; left: calc(var(--sal) + var(--rand) + 124px); bottom: calc(var(--sab) + 14px); width: 210px;
+  font-size: 15px; padding: 8px 10px; border-radius: 12px; background: var(--panel); border: 1px solid rgb(217 163 91 / 50%); }
+.hud-saegeanzeige .zeile { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 8px; }
+.hud-saegeanzeige .balken { height: 10px; border-radius: 5px; background: rgb(255 255 255 / 15%); overflow: hidden; }
+.hud-saegeanzeige .balken i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 80ms; }
+.hud-tempo { margin-top: 4px; color: var(--ok); }
+.hud-tempo.schlecht { color: var(--warn); }
+
+/* ---------- Ergebnis ---------- */
+.hud-ergebnis { position: absolute; z-index: 22; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, 80vw);
+  padding: 16px 18px; border-radius: 18px; background: rgb(31 26 21 / 97%); border: 2px solid var(--accent); pointer-events: auto; }
+.hud-stufe { font-size: 24px; font-weight: 700; color: var(--accent-hi); }
+.hud-q { font-size: 17px; margin-top: 2px; }
+.hud-ergebnis p { margin: 6px 0; font-size: 15px; }
+.hud-preis { font-weight: 600; }
+.hud-ergebnis .zeile { display: flex; gap: 10px; margin-top: 12px; }
+.hud-ergebnis .zeile button { flex: 1; }
+
+/* ---------- Hochformat (ADR 0004: nur Querformat) ---------- */
+.hud-drehen { position: absolute; inset: 0; z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 24px; text-align: center; background: radial-gradient(circle at 50% 35%, #3a2e22, #1f1a15 70%); pointer-events: auto; }
+.hud-drehen .telefon { width: 64px; height: 110px; border: 4px solid var(--accent); border-radius: 14px; animation: hud-drehen 1.8s infinite ease-in-out; }
+@keyframes hud-drehen { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+.hud-drehen h2 { margin: 0; font-size: 26px; }
+.hud-drehen p { margin: 0; color: var(--muted); font-size: 16px; max-width: 22em; }
+@media (orientation: portrait) { .hud-drehen { display: flex; } }
