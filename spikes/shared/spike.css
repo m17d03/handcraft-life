@@ -1,0 +1,137 @@
+/* Spike-Seiten: Vollbild-Canvas + HUD. Überschreibt das Startseiten-Layout aus src/style.css. */
+body.spike {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+  background: #2a221b;
+}
+.stage { position: fixed; inset: 0; overflow: hidden; }
+.scene, .touch { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.scene { outline: none; }
+.touch {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.hud { position: absolute; inset: 0; pointer-events: none; color: var(--fg); }
+.hud-top {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.hud-title {
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 45%);
+  margin-top: 28px; /* Platz für das Debug-Overlay */
+}
+.hud-nav { display: flex; gap: 8px; pointer-events: auto; }
+.hud-btn {
+  display: inline-block;
+  min-width: 44px;
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 55%);
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 15px;
+  text-align: center;
+}
+.hud-status {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: 70vw;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 55%);
+  font-size: 16px;
+  text-align: center;
+}
+.hud-status.active { color: var(--accent); }
+.hud-status.error { color: #ff8a7a; }
+.hud-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 48px);
+  transform: translateX(-50%);
+  font-size: 13px;
+  color: var(--muted);
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+}
+.hud-stats {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  font: 12px/1.3 ui-monospace, Menlo, monospace;
+  color: #9f9;
+  background: rgb(0 0 0 / 60%);
+  padding: 4px 6px;
+}
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 70%);
+  box-shadow: 0 0 2px #000;
+}
+.stick, .look-dot { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity 80ms; }
+.stick.on, .look-dot.on { opacity: 1; }
+.stick {
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 45%);
+  background: rgb(0 0 0 / 15%);
+}
+.stick-knob {
+  position: absolute;
+  left: 32px;
+  top: 32px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 55%);
+}
+.look-dot {
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 60%);
+}
+.portrait-hint {
+  display: none;
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 55%);
+  font-size: 15px;
+}
+@media (orientation: portrait) {
+  .portrait-hint { display: block; }
+  .hud-hint { white-space: normal; text-align: center; width: 80vw; }
+}
