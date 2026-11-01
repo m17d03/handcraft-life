@@ -5,11 +5,17 @@
  * Gespeichert wird der JSON-Text der SpielstandDatei – derselbe Text, den ein späterer Export liefert.
  */
 
-/** Art einer Sicherung im Store `sicherung`. Nur `autosave` rotiert; alle anderen werden nie gelöscht. */
-export type SicherungsArt = 'autosave' | 'vor-migration' | 'defekt';
+/**
+ * Art einer Sicherung im Store `sicherung`. `vor-migration` wird nie gelöscht; die anderen Arten rotieren
+ * (siehe `BEHALTEN`).
+ */
+export type SicherungsArt = 'autosave' | 'vor-migration' | 'defekt' | 'zuNeu';
 
 export interface Sicherung {
-  /** Schlüssel `<art>|<ISO-Zeit>|<laufende Nr.>` – innerhalb einer Art zeitlich sortierbar. */
+  /**
+   * Schlüssel `<art>|<Laufnummer, 10-stellig>|<ISO-Zeit>`. Die Laufnummer steigt über alle Sicherungen und
+   * Sitzungen (max. vorhandene + 1); Rotation richtet sich nach ihr, nie nach der Uhr.
+   */
   schluessel: string;
   art: SicherungsArt;
   zeit: string;
@@ -19,6 +25,14 @@ export interface Sicherung {
 /** Anzahl rotierender Autosave-Kopien (ADR 0003). */
 export const AUTOSAVES_BEHALTEN = 3;
 
+/** Höchstzahl je Art; ältere (kleinere Laufnummer) werden beim Einfügen gelöscht. */
+export const BEHALTEN: Readonly<Record<SicherungsArt, number>> = {
+  autosave: AUTOSAVES_BEHALTEN,
+  'vor-migration': Number.POSITIVE_INFINITY,
+  defekt: 3,
+  zuNeu: 3,
+};
+
 export interface Ablage {
   /** JSON-Text unter `spielstand/'aktuell'` oder `undefined`, wenn noch nichts gespeichert ist. */
   lesen(): Promise<string | undefined>;
@@ -27,23 +41,29 @@ export interface Ablage {
    * `AUTOSAVES_BEHALTEN` hinaus löschen. Scheitert die Transaktion, bleibt alles wie vorher.
    */
   schreiben(json: string, zeit: string): Promise<void>;
-  /** Legt eine nicht rotierende Sicherung an (Rohkopie vor Migration, defekter Stand). */
+  /** Legt eine Sicherung an (Rohkopie vor Migration, defekter/zu neuer Stand); rotiert nach `BEHALTEN`. */
   sichern(art: Exclude<SicherungsArt, 'autosave'>, json: string, zeit: string): Promise<void>;
-  /** Alle Sicherungen, nach Schlüssel sortiert. */
+  /** Alle Sicherungen, nach Laufnummer sortiert (älteste zuerst). */
   sicherungen(): Promise<Sicherung[]>;
 }
 
-let laufendeNr = 0;
-
-export function sicherungsSchluessel(art: SicherungsArt, zeit: string): string {
-  laufendeNr = (laufendeNr + 1) % 1_000_000;
-  return `${art}|${zeit}|${String(laufendeNr).padStart(6, '0')}`;
+function laufnummer(schluessel: string): number {
+  const nr = Number(schluessel.split('|')[1]);
+  return Number.isFinite(nr) ? nr : 0;
 }
 
-/** Autosave-Schlüssel, die nach dem Hinzufügen von `neu` gelöscht werden müssen (älteste zuerst). */
-export function zuLoeschendeAutosaves(vorhandeneSchluessel: readonly string[]): string[] {
-  const autosaves = vorhandeneSchluessel.filter((k) => k.startsWith('autosave|')).sort();
-  return autosaves.slice(0, Math.max(0, autosaves.length - AUTOSAVES_BEHALTEN));
+export const nachLaufnummer = (a: Sicherung, b: Sicherung): number => laufnummer(a.schluessel) - laufnummer(b.schluessel);
+
+/** Nächster Schlüssel: Laufnummer = grösste vorhandene + 1 (unabhängig von der Uhr). */
+export function naechsterSchluessel(art: SicherungsArt, zeit: string, vorhandene: readonly string[]): string {
+  const nr = vorhandene.reduce((max, k) => Math.max(max, laufnummer(k)), 0) + 1;
+  return `${art}|${String(nr).padStart(10, '0')}|${zeit}`;
+}
+
+/** Schlüssel der Art `art`, die über `BEHALTEN[art]` hinausgehen (kleinste Laufnummern zuerst). */
+export function zuLoeschende(art: SicherungsArt, vorhandene: readonly string[]): string[] {
+  const eigene = vorhandene.filter((k) => k.startsWith(`${art}|`)).sort((a, b) => laufnummer(a) - laufnummer(b));
+  return eigene.slice(0, Math.max(0, eigene.length - BEHALTEN[art]));
 }
 
 /**
@@ -72,21 +92,18 @@ export class SpeicherAblage implements Ablage {
   schreiben(json: string, zeit: string): Promise<void> {
     return this.transaktion((tx) => {
       tx.aktuell = json;
-      const schluessel = sicherungsSchluessel('autosave', zeit);
-      tx.sicherung.set(schluessel, { schluessel, art: 'autosave', zeit, json });
-      for (const k of zuLoeschendeAutosaves([...tx.sicherung.keys()])) tx.sicherung.delete(k);
+      einfuegen(tx.sicherung, 'autosave', zeit, json);
     });
   }
 
   sichern(art: Exclude<SicherungsArt, 'autosave'>, json: string, zeit: string): Promise<void> {
     return this.transaktion((tx) => {
-      const schluessel = sicherungsSchluessel(art, zeit);
-      tx.sicherung.set(schluessel, { schluessel, art, zeit, json });
+      einfuegen(tx.sicherung, art, zeit, json);
     });
   }
 
   sicherungen(): Promise<Sicherung[]> {
-    return Promise.resolve([...this.sicherungStore.values()].sort((a, b) => (a.schluessel < b.schluessel ? -1 : 1)));
+    return Promise.resolve([...this.sicherungStore.values()].sort(nachLaufnummer));
   }
 
   private transaktion(
@@ -104,6 +121,12 @@ export class SpeicherAblage implements Ablage {
     this.schreibvorgaenge += 1;
     return Promise.resolve();
   }
+}
+
+function einfuegen(store: Map<string, Sicherung>, art: SicherungsArt, zeit: string, json: string): void {
+  const schluessel = naechsterSchluessel(art, zeit, [...store.keys()]);
+  store.set(schluessel, { schluessel, art, zeit, json });
+  for (const k of zuLoeschende(art, [...store.keys()])) store.delete(k);
 }
 
 /** Fehler mit `name` wie eine DOMException (die es in Node nicht überall gibt). */

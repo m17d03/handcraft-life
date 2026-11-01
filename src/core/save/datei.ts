@@ -67,7 +67,7 @@ export function neueModulAbschnitte(module: readonly ModuleManifest[]): Record<M
   const ergebnis: Record<ModulId, ModulAbschnitt> = {};
   for (const m of speicherModule(module)) {
     if (m.save === undefined) continue;
-    ergebnis[m.id] = { modulVersion: m.version, schema: m.save.schemaVersion, aktiv: true, daten: m.save.defaults() };
+    setze(ergebnis, m.id, { modulVersion: m.version, schema: m.save.schemaVersion, aktiv: true, daten: m.save.defaults() });
   }
   return ergebnis;
 }
@@ -101,6 +101,11 @@ export function migrieren(
     x = schritt(x);
   }
   return x;
+}
+
+/** Eigene Eigenschaft setzen – auch für Schlüssel wie `__proto__` aus fremden Spielständen. */
+function setze<T>(ziel: Record<string, T>, schluessel: string, wert: T): void {
+  Object.defineProperty(ziel, schluessel, { value: wert, enumerable: true, writable: true, configurable: true });
 }
 
 const fehlerText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -154,19 +159,19 @@ export function dateiLesen(roh: unknown, module: readonly ModuleManifest[]): Lad
     bekannt.add(m.id);
     const a = alt[m.id];
     if (a === undefined) {
-      ergebnis[m.id] = { modulVersion: m.version, schema: save.schemaVersion, aktiv: true, daten: save.defaults() };
+      setze(ergebnis, m.id, { modulVersion: m.version, schema: save.schemaVersion, aktiv: true, daten: save.defaults() });
       hinweise.push(`Modul ${m.id}: Abschnitt fehlte – Standardwerte`);
       continue;
     }
     if (!istObj(a) || !istSchema(a.schema)) {
       // Unlesbar: unverändert als ruhend behalten, Modul für diesen Spielstand deaktiviert.
-      ergebnis[m.id] = a as ModulAbschnitt;
+      setze(ergebnis, m.id, a as ModulAbschnitt);
       deaktiviert.push(m.id);
       hinweise.push(`Modul ${m.id}: Abschnitt unlesbar – deaktiviert, Daten bleiben erhalten`);
       continue;
     }
     if (a.schema > save.schemaVersion) {
-      ergebnis[m.id] = a as unknown as ModulAbschnitt;
+      setze(ergebnis, m.id, a as unknown as ModulAbschnitt);
       nurLesend = true;
       hinweise.push(`Modul ${m.id}: Schema ${String(a.schema)} neuer als ${String(save.schemaVersion)} – nur lesend`);
       continue;
@@ -175,14 +180,14 @@ export function dateiLesen(roh: unknown, module: readonly ModuleManifest[]): Lad
       const daten = migrieren(a.daten, a.schema, save.schemaVersion, save.migrations);
       if (!save.validate(daten)) throw new Error('validate fehlgeschlagen');
       if (a.schema < save.schemaVersion) migriert = true;
-      ergebnis[m.id] = {
+      setze(ergebnis, m.id, {
         modulVersion: m.version,
         schema: save.schemaVersion,
         aktiv: typeof a.aktiv === 'boolean' ? a.aktiv : true,
         daten,
-      };
+      });
     } catch (e) {
-      ergebnis[m.id] = a as unknown as ModulAbschnitt;
+      setze(ergebnis, m.id, a as unknown as ModulAbschnitt);
       deaktiviert.push(m.id);
       hinweise.push(`Modul ${m.id}: ${fehlerText(e)} – deaktiviert, Daten bleiben erhalten`);
     }
@@ -191,7 +196,7 @@ export function dateiLesen(roh: unknown, module: readonly ModuleManifest[]): Lad
   // Unbekannte Abschnitte (Modul nicht im Code): unverändert mitspeichern ("ruhend"), nie löschen.
   for (const [id, a] of Object.entries(alt)) {
     if (bekannt.has(id)) continue;
-    ergebnis[id] = a as ModulAbschnitt;
+    setze(ergebnis, id, a as ModulAbschnitt);
     hinweise.push(`Modul ${id}: nicht im Code – Abschnitt ruht unverändert`);
   }
 

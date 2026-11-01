@@ -20,8 +20,10 @@ const stand = (geld: number): Spielzustand => {
 const geldIn = (json: string | undefined): number =>
   (JSON.parse(json ?? '{}') as { kern: { daten: Spielzustand } }).kern.daten.inventar.geld;
 
-function dienst(ablage = new SpeicherAblage(), extra: Partial<SpielstandOptionen> = {}) {
+/** Dienst nach abgeschlossenem `laden()` (vorher wird nie gespeichert). */
+async function dienst(ablage = new SpeicherAblage(), extra: Partial<SpielstandOptionen> = {}) {
   const s = new Spielstand({ ablage, module: katalog.module, speicherVerwaltung: undefined, ...extra });
+  await s.laden();
   return { s, ablage };
 }
 
@@ -35,7 +37,7 @@ afterEach(() => {
 
 describe('Autosave – speichern() entprellt (≤ 1×/s)', () => {
   it('viele Aufrufe in 1 s → ein Schreibvorgang mit dem neuesten Stand', async () => {
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     await s.laden();
     s.speichern(stand(1));
     await vi.advanceTimersByTimeAsync(0);
@@ -52,7 +54,7 @@ describe('Autosave – speichern() entprellt (≤ 1×/s)', () => {
   });
 
   it('über 10 s Dauerfeuer höchstens 11 Schreibvorgänge', async () => {
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     for (let t = 0; t < 10_000; t += 50) {
       s.speichern(stand(t));
       await vi.advanceTimersByTimeAsync(50);
@@ -63,7 +65,7 @@ describe('Autosave – speichern() entprellt (≤ 1×/s)', () => {
   });
 
   it('sofortSpeichern() schreibt Wartendes ohne Verzögerung (visibilitychange/pagehide)', async () => {
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     s.speichern(stand(1));
     await vi.advanceTimersByTimeAsync(0);
     s.speichern(stand(2));
@@ -76,7 +78,7 @@ describe('Autosave – speichern() entprellt (≤ 1×/s)', () => {
   });
 
   it('sofortSpeichern(zustand) ohne Wartendes schreibt den übergebenen Stand', async () => {
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     expect(await s.sofortSpeichern(stand(9))).toBe(true);
     expect(geldIn(ablage.aktuell)).toBe(9);
   });
@@ -84,7 +86,7 @@ describe('Autosave – speichern() entprellt (≤ 1×/s)', () => {
 
 describe('Sicherungen', () => {
   it(`rotiert die letzten ${String(AUTOSAVES_BEHALTEN)} Autosaves`, async () => {
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     for (let i = 1; i <= 6; i++) {
       await s.sofortSpeichern(stand(i));
       vi.advanceTimersByTime(1000);
@@ -113,7 +115,7 @@ describe('Sicherungen', () => {
         validate: (d: unknown): d is object => typeof d === 'object',
       },
     };
-    const { s, ablage } = dienst(new SpeicherAblage(alt), { module: [kernModul, probe] });
+    const { s, ablage } = await dienst(new SpeicherAblage(alt), { module: [kernModul, probe] });
     expect((await s.laden()).art).toBe('geladen');
     for (let i = 0; i < 5; i++) {
       await s.sofortSpeichern(z);
@@ -138,7 +140,7 @@ describe('Sicherungen', () => {
     };
     const ablage = new SpeicherAblage(alt);
     ablage.stoerung = 'voll';
-    const { s } = dienst(ablage, { module: [kernModul, probe] });
+    const { s } = await dienst(ablage, { module: [kernModul, probe] });
     expect((await s.laden()).art).toBe('geladen');
     expect(s.status().modus).toBe('nurLesend');
     ablage.stoerung = null;
@@ -150,7 +152,7 @@ describe('Sicherungen', () => {
 
 describe('S3 – atomar: alt oder neu, nie Mischung', () => {
   it('Abbruch der Transaktion → aktuell und Sicherungen unverändert', async () => {
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     await s.sofortSpeichern(stand(1));
     const vorher = ablage.aktuell;
     const sicherVorher = await ablage.sicherungen();
@@ -178,7 +180,7 @@ describe('S3 – atomar: alt oder neu, nie Mischung', () => {
       ...zuege(3),
     ]).zustand;
     expect(z.arbeit?.phase).toBe('saegen');
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     await s.sofortSpeichern(z);
     const a = await new Spielstand({ ablage, module: katalog.module, speicherVerwaltung: undefined }).laden();
     if (a.art !== 'geladen') throw new Error(a.art);
@@ -191,7 +193,7 @@ describe('S3 – atomar: alt oder neu, nie Mischung', () => {
 
 describe('S8 – Speicher nicht verfügbar: Hinweis, Spiel läuft weiter', () => {
   it('Kontingent voll: kein Wurf, Hinweis, nächster Versuch schreibt nach', async () => {
-    const { s, ablage } = dienst();
+    const { s, ablage } = await dienst();
     ablage.stoerung = 'voll';
     s.speichern(stand(3));
     await vi.advanceTimersByTimeAsync(0);
@@ -207,7 +209,7 @@ describe('S8 – Speicher nicht verfügbar: Hinweis, Spiel läuft weiter', () =>
   it('Lesefehler: neuer Start, Speichern gesperrt (nichts Unbekanntes überschreiben)', async () => {
     const ablage = new SpeicherAblage(JSON.stringify({ irgendwas: 1 }));
     ablage.stoerung = 'lesen';
-    const { s } = dienst(ablage);
+    const { s } = await dienst(ablage);
     expect((await s.laden()).art).toBe('lesefehler');
     expect(s.status().modus).toBe('gesperrt');
     expect(await s.sofortSpeichern(stand(1))).toBe(false);
@@ -255,7 +257,7 @@ describe('navigator.storage.persist()', () => {
 
   it('wird beim ersten erfolgreichen Speichern einmal versucht; Ergebnis in status()', async () => {
     const persist = vi.fn(() => Promise.resolve(true));
-    const { s } = dienst(new SpeicherAblage(), { speicherVerwaltung: { persist } });
+    const { s } = await dienst(new SpeicherAblage(), { speicherVerwaltung: { persist } });
     expect(s.status().dauerhaft).toBeNull();
     await s.sofortSpeichern(stand(1));
     await vi.advanceTimersByTimeAsync(0);

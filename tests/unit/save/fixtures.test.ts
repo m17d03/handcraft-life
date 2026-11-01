@@ -100,7 +100,7 @@ describe('S7 – defekter oder zukünftiger Spielstand', () => {
     expect(await s.sofortSpeichern(neuerStand())).toBe(true);
     expect(ablage.aktuell).not.toBe(roh);
     const sicherungen = await ablage.sicherungen();
-    expect(sicherungen.filter((x) => x.art === 'defekt').some((x) => x.json === roh)).toBe(true);
+    expect(sicherungen.filter((x) => x.art === 'zuNeu').some((x) => x.json === roh)).toBe(true);
   });
 
   it('kaputtes JSON: defekt, Rohdaten in sicherung, kein stilles Überschreiben', async () => {
