@@ -26,6 +26,8 @@ export const FICHTE_BRETT: MaterialDef = {
     ast_p: 0.3,
     /** Unbearbeitetes Werksende: Bezugsfehler −2…+2 mm. */
     ende_fehler_max_mm: 2,
+    ende_gut_max_mm: 0.3,
+    ende_schlecht_min_mm: 1,
   },
 };
 
@@ -74,6 +76,8 @@ export const AUFTRAG_REGALBRETT: AuftragVorlage = {
   raster: { laenge_mm: 50 },
   start: { laenge_mm: 600 },
   toleranz: { delta_l_mm: 1 },
+  // Lernkurve „geführt“ (holz-brett-zuschnitt §5): Auftrag 1–2 mit ± 2 mm (Director-Freigabe Ticket 013, QA F3)
+  einstieg: { auftraege: 2, toleranz: { delta_l_mm: 2 } },
   basispreis: { material_faktor: 1.5, je_schritt: 4 },
 };
 

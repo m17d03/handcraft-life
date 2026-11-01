@@ -315,7 +315,7 @@ export function ausfuehren(katalog: Katalog, zustand: Spielzustand, aktion: Akti
         const vorlage = katalog.auftragVorlagen[auftrag.vorlageId];
         if (vorlage !== undefined) {
           const rng = zufallsquelle(z.zufallSaat);
-          const neu = auftragErzeugen(katalog, vorlage, neueId(z, 'af'), rng.zufall, false);
+          const neu = auftragErzeugen(katalog, vorlage, neueId(z, 'af'), rng.zufall, false, z.tutorial);
           z.zufallSaat = rng.saat();
           z.auftraege.push(neu);
           ereignisse.push({ art: 'auftragAngeboten', auftragId: neu.id, soll: neu.soll, basispreis: neu.basispreis });

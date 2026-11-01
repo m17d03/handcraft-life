@@ -92,12 +92,43 @@ export function leseUmgebung(): Umgebung {
   };
 }
 
-function standardSpeicher(): Speicher | null {
+/**
+ * Speicher mit Rückfall (Ticket 013): Ist `localStorage` gesperrt (privates Surfen, Speicher voll, Zugriff
+ * verweigert), merkt sich der Hinweis das Schliessen wenigstens für die laufende Sitzung im Arbeitsspeicher –
+ * er taucht dann nicht nach jeder Ablieferung wieder auf.
+ */
+export function speicherMitSitzungsMerker(dauerhaft: Speicher | null, sitzung: Map<string, string> = new Map()): Speicher {
+  return {
+    getItem(schluessel) {
+      const s = sitzung.get(schluessel);
+      if (s !== undefined) return s;
+      try {
+        return dauerhaft?.getItem(schluessel) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    setItem(schluessel, wert) {
+      sitzung.set(schluessel, wert);
+      try {
+        dauerhaft?.setItem(schluessel, wert);
+      } catch {
+        // gesperrt oder voll: der Sitzungsmerker genügt bis zum Neuladen
+      }
+    },
+  };
+}
+
+const sitzungsMerker = new Map<string, string>();
+
+function standardSpeicher(): Speicher {
+  let dauerhaft: Speicher | null;
   try {
-    return localStorage;
+    dauerhaft = localStorage;
   } catch {
-    return null;
+    dauerhaft = null;
   }
+  return speicherMitSitzungsMerker(dauerhaft, sitzungsMerker);
 }
 
 export interface InstallHinweisOptionen {

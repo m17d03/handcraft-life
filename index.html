@@ -13,12 +13,26 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Handcraft" />
     <title>Handcraft Life</title>
+    <style>
+      /* Ticket 013: „Spielen“ ist der Haupteintrag (Vertical Slice 0.1) */
+      .links a.spielen {
+        min-height: 56px;
+        line-height: 56px;
+        font-size: 1.25rem;
+        font-weight: 700;
+        text-align: center;
+        color: #1f1a15;
+        background: #d9a35b;
+        border-color: #ffd08a;
+      }
+      .links a.spielen:active { background: #ffd08a; }
+    </style>
   </head>
   <body>
     <main>
       <h1>Handcraft Life</h1>
       <p class="tagline">Werkstatt · Handwerk · Outdoor</p>
-      <p class="status">Phase 0 – Preproduction</p>
+      <p class="status">Vertical Slice 0.1 – Werkstatt, ein Regalbrett ablängen</p>
       <p id="webgl-status">WebGL 2 wird geprüft …</p>
       <p class="small">Fps und Fehler anzeigen: <a href="?debug=1">?debug=1</a></p>
       <nav class="links" aria-label="Spiel">

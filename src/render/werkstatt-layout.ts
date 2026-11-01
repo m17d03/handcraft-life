@@ -10,8 +10,10 @@ export const RAUM = { breite: 6, tiefe: 5, hoehe: 2.8, wand: 0.12 } as const;
 export const WERKBANK = {
   x: 0,
   z: -2.0,
-  laenge: 2.4,
-  tiefe: 0.75,
+  // Masse der Werkbank aus werkbank.glb (1,5 × 0,6 m), beim Einbau auf 1,8 × 0,66 m gestreckt (Ticket 013):
+  // das 2-m-Rohbrett steht links und rechts je 10 cm über – wie beim echten Ablängen.
+  laenge: 1.8,
+  tiefe: 0.66,
   hoehe: 0.9, // Oberkante Platte
   platte: 0.06,
 } as const;
@@ -65,7 +67,7 @@ export const ARBEITSANSICHT = {
   /** Dauer der Kamerafahrt (Abnahme: ≤ 600 ms) */
   fahrtMs: 450,
   /** Rand links/rechts neben dem Brett */
-  randM: 0.06,
+  randM: 0.2, // Brettenden bleiben ausserhalb von Notch/Randzone (Bezugsende antippen)
   minAbstand: 0.55,
   maxAbstand: 1.6,
 } as const;

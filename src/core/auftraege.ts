@@ -14,6 +14,8 @@ export function auftragErzeugen(
   id: string,
   zufall: Zufall,
   start: boolean,
+  /** Bereits abgelieferte Aufträge (für die Einstiegs-Toleranz); Standard: 0 beim Start, sonst „viele“. */
+  abgeliefert: number = start ? 0 : Number.POSITIVE_INFINITY,
 ): Auftrag {
   const soll: Record<string, number> = {};
   for (const [schluessel, [min, max]] of Object.entries(vorlage.soll)) {
@@ -35,7 +37,7 @@ export function auftragErzeugen(
     id,
     vorlageId: vorlage.id,
     soll,
-    toleranz: { ...vorlage.toleranz },
+    toleranz: { ...(vorlage.einstieg !== undefined && abgeliefert < vorlage.einstieg.auftraege ? vorlage.einstieg.toleranz : vorlage.toleranz) },
     basispreis: basispreis(vorlage, material, soll[SOLL_LAENGE] ?? 0, produkt.schritte.length),
     kundeId: 'laufkunde',
     status: 'angeboten',

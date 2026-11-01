@@ -39,11 +39,12 @@ describe('Regel Rohbrett-Fehler', () => {
   const basis = () =>
     werkstueckErzeugen(FICHTE_BRETT, 'ws_1', () => 0.5, []);
 
-  it('Endriss am gewürfelten Ende mit Länge 20–80 mm, Ast in der Fläche', () => {
-    // endriss_p ja (0.1), Ende b (0.7), Länge 20 + 60 × 0.5 = 50, Ast ja (0.1), Position 100 + 1800 × 0.5
-    const ws = rohbrettFehlerRegel.anwenden(basis(), FICHTE_BRETT, liste([0.1, 0.7, 0.5, 0.1, 0.5]));
-    expect(ws.enden.b.merkmale).toEqual([{ id: 'holz.merkmal.endriss', laenge_mm: 50 }]);
-    expect(ws.enden.a.merkmale).toEqual([]);
+  it('Endriss am schiefen Werksende mit Länge 20–80 mm, Ast in der Fläche', () => {
+    // basis(): zufall 0.5 → gutes Ende b, schiefes Ende a. endriss_p ja (0.1), Länge 20 + 60 × 0.5 = 50,
+    // Ast ja (0.1), Position 100 + 1800 × 0.5
+    const ws = rohbrettFehlerRegel.anwenden(basis(), FICHTE_BRETT, liste([0.1, 0.5, 0.1, 0.5]));
+    expect(ws.enden.a.merkmale).toEqual([{ id: 'holz.merkmal.endriss', laenge_mm: 50 }]);
+    expect(ws.enden.b.merkmale).toEqual([]);
     expect(ws.merkmale).toEqual([{ id: 'holz.merkmal.ast', pos_mm: 1000 }]);
   });
 
@@ -53,7 +54,7 @@ describe('Regel Rohbrett-Fehler', () => {
     expect(ws.enden.a.merkmale).toEqual([]);
     expect(ws.enden.b.merkmale).toEqual([]);
     expect(ws.merkmale).toEqual([]);
-    const mitRiss = rohbrettFehlerRegel.anwenden(vorher, FICHTE_BRETT, liste([0.1, 0.2, 0.5, 0.9]));
+    const mitRiss = rohbrettFehlerRegel.anwenden(vorher, FICHTE_BRETT, liste([0.1, 0.5, 0.9]));
     expect(mitRiss.enden.a.merkmale).toHaveLength(1);
     expect(vorher.enden.a.merkmale).toEqual([]);
   });
@@ -81,5 +82,26 @@ describe('Regel Rohbrett-Fehler', () => {
     const ws = werkstueckErzeugen(metall, 'ws_1', () => 0, [rohbrettFehlerRegel]);
     expect(ws.enden.a.merkmale).toEqual([]);
     expect(ws.merkmale).toEqual([]);
+  });
+});
+
+describe('Rohbrett: ein sauberes, ein schiefes Ende (Director-Entscheid 2026-11-01)', () => {
+  it('über 500 Seeds: ein Ende ≤ 0,3 mm, das andere 1–2 mm Bezugsfehler; Endriss nur am schiefen Ende', () => {
+    for (let seed = 1; seed <= 500; seed++) {
+      let x = seed * 9301 + 49297;
+      const zufall = (): number => {
+        x = (x * 9301 + 49297) % 233280;
+        return x / 233280;
+      };
+      const ws = rohbrettFehlerRegel.anwenden(werkstueckErzeugen(FICHTE_BRETT, 'ws', zufall, []), FICHTE_BRETT, zufall);
+      const fa = Math.abs(bezugsfehler(ws, 'a'));
+      const fb = Math.abs(bezugsfehler(ws, 'b'));
+      const [gut, schief] = fa <= fb ? [fa, fb] : [fb, fa];
+      expect(gut).toBeLessThanOrEqual(0.3 + 1e-9);
+      expect(schief).toBeGreaterThanOrEqual(1 - 1e-9);
+      expect(schief).toBeLessThanOrEqual(2 + 1e-9);
+      const gutesEnde = fa <= fb ? 'a' : 'b';
+      expect(ws.enden[gutesEnde].merkmale).toEqual([]);
+    }
   });
 });

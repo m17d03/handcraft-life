@@ -484,8 +484,9 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
       el.hidden = false;
       el.textContent = `${String(g)} ${waehrung}`;
     },
-    hinweis(text) {
+    hinweis(text, art = 'info') {
       const el = q(root, '.hud-hinweis');
+      el.classList.toggle('warnung', art === 'warnung');
       el.hidden = text === null;
       el.textContent = text ?? '';
     },

@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three';
 import type { PerfMelder } from '../perf/perf-snapshot';
+import { ladeWerkstattAssets, type WerkstattAssets } from './assets';
 import { aufloesungsGrenzen, DynamischeAufloesung, type AufloesungsParameter } from './aufloesung';
 import { bildschirmNachBrettMm, brettMmNachBildschirm, type BrettLage } from './brett-koordinaten';
 import { erzeugeHolzTexturen, type HolzTexturen } from './holztextur';
@@ -12,7 +13,7 @@ import { arbeitsPose, IchKamera, Kamerafahrt, type KameraPose } from './ich-kame
 import { add, clamp, forwardFromYawPitch, projectToScreen, screenRay, type Projektion } from './mathe';
 import { pickNaechstes } from './picking';
 import type { WerkstattViewDebug, WerkstattViewZustand } from './view-api';
-import { WerkstattSzene, type SaegeZustand } from './werkstatt-szene';
+import { WerkstattSzene, type EndRisse, type EndWinkel, type SaegeZustand } from './werkstatt-szene';
 import { ARBEITSANSICHT, BEGEHBAR, BRETT, BRETT_OBEN_Y, KAMERA } from './werkstatt-layout';
 
 export const SZENEN_ID = 'werkstatt';
@@ -25,18 +26,31 @@ export interface WerkstattOptionen {
   readonly holzTexturGroesse?: number;
   /** Erster Frame ist gezeichnet. */
   readonly beiBereit?: () => void;
+  /**
+   * Wurzelpfad, unter dem `assets/` und `basis/` ausgeliefert werden (Vite `BASE_URL`). Ohne Angabe
+   * werden keine Modelle geladen (Platzhalter aus Ticket 010).
+   */
+  readonly assetBasis?: string;
+  /** Dauer der Kamerafahrt (ms); Standard ARBEITSANSICHT.fahrtMs. Tests (`?test=1`) setzen 0. */
+  readonly kamerafahrtMs?: number;
+  /** Ladefehler der Assets (Szene läuft mit Platzhaltern weiter). */
+  readonly beiAssetFehler?: (fehler: unknown) => void;
 }
 
 const endlich = (v: number, ersatz = 0): number => (Number.isFinite(v) ? v : ersatz);
 
 class WerkstattViewThree implements WerkstattViewDebug {
   private readonly renderer: THREE.WebGLRenderer;
-  private szene: WerkstattSzene;
-  private readonly holz: HolzTexturen;
+  /** Wird in `starten()` aufgebaut (vor der ersten Nutzung durch den Aufrufer). */
+  private szene!: WerkstattSzene;
+  private holz: HolzTexturen | null = null;
+  private assets: WerkstattAssets | null = null;
+  private risse: EndRisse = { a: null, b: null };
+  private winkel: EndWinkel = { a: 0, b: 0 };
   private readonly anisotropie: number;
   private readonly kamera: THREE.PerspectiveCamera;
   private readonly ich: IchKamera;
-  private readonly fahrt = new Kamerafahrt(ARBEITSANSICHT.fahrtMs);
+  private readonly fahrt: Kamerafahrt;
   private readonly dyn: DynamischeAufloesung | null;
   private readonly maxDichte: number;
   private readonly perf: PerfMelder | null;
@@ -67,6 +81,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     private readonly opt: WerkstattOptionen,
   ) {
     this.perf = opt.perf ?? null;
+    this.fahrt = new Kamerafahrt(opt.kamerafahrtMs ?? ARBEITSANSICHT.fahrtMs);
     const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, stencil: false, powerPreference: 'high-performance' });
     this.renderer = r;
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -82,14 +97,10 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.maxDichte = grenzen.max;
     this.dyn = (opt.aufloesung?.dynamisch ?? true) ? new DynamischeAufloesung(grenzen.min, grenzen.max) : null;
 
-    this.holz = erzeugeHolzTexturen(opt.holzTexturGroesse ?? 1024);
     this.anisotropie = Math.min(4, r.capabilities.getMaxAnisotropy());
-    this.szene = new WerkstattSzene(this.holz, this.anisotropie);
-    this.szene.umgebungErzeugen(r);
     this.kamera = new THREE.PerspectiveCamera((KAMERA.fovY * 180) / Math.PI, 1, KAMERA.near, KAMERA.far);
     this.ich = new IchKamera(KAMERA.start, KAMERA.augenhoehe, BEGEHBAR);
     this.pose = this.ich.pose;
-    this.anwenden(true);
 
     canvas.addEventListener('webglcontextlost', this.beiVerlust);
     canvas.addEventListener('webglcontextrestored', this.beiWiederherstellung);
@@ -101,7 +112,29 @@ class WerkstattViewThree implements WerkstattViewDebug {
     const gl = r.getContext();
     const samples = Number(gl.getParameter(gl.SAMPLES)) || 0;
     this.perf?.setzeMeta({ engine: 'three', engineVersion: THREE.REVISION, scene: SZENEN_ID, aa: samples > 0 ? 'msaa' : 'none', msaaSamples: samples });
-    r.setAnimationLoop(this.frame);
+  }
+
+  /** Prozedurale Holztextur (nur für Platzhalter/Rückfall; kostet beim ersten Aufruf CPU-Zeit). */
+  private holzTexturen(): HolzTexturen | null {
+    if (this.assets) return null;
+    this.holz ??= erzeugeHolzTexturen(this.opt.holzTexturGroesse ?? 1024);
+    return this.holz;
+  }
+
+  /** Lädt die Assets (falls `assetBasis` gesetzt), baut die Szene darauf auf und startet die Schleife. */
+  async starten(): Promise<void> {
+    if (this.opt.assetBasis !== undefined) {
+      try {
+        this.assets = await ladeWerkstattAssets(this.renderer, this.opt.assetBasis);
+      } catch (e) {
+        this.assets = null;
+        this.opt.beiAssetFehler?.(e);
+      }
+    }
+    this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
+    this.szene.umgebungErzeugen(this.renderer);
+    this.anwenden(true);
+    if (!this.beendet) this.renderer.setAnimationLoop(this.frame);
   }
 
   // ------------------------------------------------------------------ Schleife
@@ -168,7 +201,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     // Alle GPU-Objekte des alten Kontexts sind weg. Die alten Three-Objekte tragen noch Dispose-Hörer der
     // alten Renderer-Module (dispose() würde fremde GL-Objekte löschen → Warnungen). Darum die Szene
     // ohne dispose verwerfen und aus dem gespeicherten Zustand neu aufbauen (Holztextur wird wiederverwendet).
-    this.szene = new WerkstattSzene(this.holz, this.anisotropie);
+    this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
     this.szene.umgebungErzeugen(this.renderer);
     this.anwenden(true);
   };
@@ -184,6 +217,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
       massbandMm: this.massbandMm,
       saege: this.saege,
       hervorgehoben: this.hervor,
+      risse: this.risse,
+      winkel: this.winkel,
     });
     if (schatten) this.renderer.shadowMap.needsUpdate = true;
     this.feedbackOffen = true;
@@ -259,6 +294,18 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.anwenden(true);
   }
 
+  endwinkelZeigen(winkel: { a: number; b: number }): void {
+    const w = (v: number): number => (Number.isFinite(v) ? clamp(v, -10, 10) : 0);
+    this.winkel = { a: w(winkel.a), b: w(winkel.b) };
+    this.anwenden(true);
+  }
+
+  endrisseZeigen(risse: { a: number | null; b: number | null }): void {
+    const wert = (v: number | null): number | null => (v === null || !Number.isFinite(v) || v <= 0 ? null : clamp(v, 1, 4000));
+    this.risse = { a: wert(risse.a), b: wert(risse.b) };
+    this.anwenden(false);
+  }
+
   hervorheben(id: string | null): void {
     this.hervor = id;
     this.anwenden(false);
@@ -282,7 +329,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.canvas.removeEventListener('webglcontextrestored', this.beiWiederherstellung);
     window.removeEventListener('resize', this.groesseAnpassen);
     this.beobachter?.disconnect();
-    this.szene.dispose();
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose() vor dem Ende von starten()
+    this.szene?.dispose();
     this.renderer.dispose();
   }
 
@@ -300,6 +348,9 @@ class WerkstattViewThree implements WerkstattViewDebug {
       leuchtend: this.szene.leuchtendeMaterialien(),
       frames: this.frames,
       kontextVerloren: this.verloren,
+      assets: this.szene.mitAssets ? 'modelle' : 'platzhalter',
+      risse: { ...this.risse },
+      winkel: { ...this.winkel },
     };
   }
 
@@ -324,5 +375,7 @@ export function hatWebGL2(): boolean {
  */
 export async function erzeugeWerkstattView(canvas: HTMLCanvasElement, opt: WerkstattOptionen = {}): Promise<WerkstattViewDebug> {
   await new Promise<void>((r) => requestAnimationFrame(() => { r(); }));
-  return new WerkstattViewThree(canvas, opt);
+  const view = new WerkstattViewThree(canvas, opt);
+  await view.starten();
+  return view;
 }
