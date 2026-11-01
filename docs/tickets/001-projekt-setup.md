@@ -34,7 +34,7 @@ CLAUDE.md (Tech-Grundsätze, Definition of Done), UMSETZUNGSPLAN.md Abschnitt 3 
 - [x] `npm run build` erzeugt `dist/`; erster Download < 100 kB (gzip)
 - [x] Startseite: Viewport für iPhone (Safe Areas, kein Seiten-Zoom), zeigt Projektname,
       Status "Phase S" und ob WebGL 2 verfügbar ist
-- [ ] GitHub-Pages-Workflow auf `main` erfolgreich; https://m17d03.github.io/handcraft-life/ lädt
+- [x] GitHub-Pages-Workflow auf `main` erfolgreich; https://m17d03.github.io/handcraft-life/ lädt
 - [ ] (Gerät) Startseite und `?debug=1` auf dem iPhone lesbar, fps-Wert sichtbar
 
 ## Nicht Teil dieses Tickets
@@ -50,4 +50,5 @@ CLAUDE.md (Tech-Grundsätze, Definition of Done), UMSETZUNGSPLAN.md Abschnitt 3 
   im Overlay (E2E-Test ergänzt), Overlay max. 40 % Bildhöhe. Bewusst: Sourcemaps werden mit
   veröffentlicht (Fehlersuche auf dem iPhone); 11 moderate npm-audit-Befunde nur in Dev-Werkzeugen
   (eslint/minimatch), kein Einfluss auf das ausgelieferte Spiel.
-- Budget: docs/perf/2026-10-31-001.md. Offen: Pages-Deploy auf main, (Gerät)-Prüfung durch den Menschen.
+- Budget: docs/perf/2026-10-31-001.md.
+- 2026-11-01: Pages vom Menschen aktiviert; Deploy-Run 41283054764 (build + deploy) grün. Offen: (Gerät)-Prüfung durch den Menschen.
