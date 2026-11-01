@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f1a15" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Spielen – Handcraft Life</title>
+    <style>
+      /* Spielseite: Vollbild-Canvas. Überschreibt das Startseiten-Layout aus src/style.css. */
+      body.spiel {
+        display: block;
+        padding: 0;
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        touch-action: none;
+        background: #1f1a15;
+      }
+      #scene {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        outline: none;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+      #spiel-status {
+        position: fixed;
+        left: 50%;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+        max-width: 80vw;
+        padding: 8px 14px;
+        border: 1.5px solid #d9a35b;
+        border-radius: 14px;
+        background: rgb(31 26 21 / 88%);
+        color: #f3e9dc;
+        font-size: 16px;
+        text-align: center;
+        pointer-events: none;
+      }
+      #spiel-status[hidden] { display: none; }
+      #spiel-status.fehler { color: #ff8a7a; border-color: #ff8a7a; }
+      /* ADR 0004: nur Querformat. Endgültiges HUD macht Ticket 011. */
+      .quer-hinweis {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 900;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+        padding: 24px;
+        background: rgb(31 26 21 / 92%);
+        color: #f3e9dc;
+        font-size: 20px;
+        text-align: center;
+      }
+      .quer-hinweis .symbol { font-size: 44px; color: #d9a35b; }
+      @media (orientation: portrait) {
+        .quer-hinweis { display: flex; }
+      }
+    </style>
+  </head>
+  <body class="spiel">
+    <noscript>Das Spiel braucht JavaScript.</noscript>
+    <canvas id="scene" aria-label="Werkstatt"></canvas>
+    <p id="spiel-status" role="status">Lädt …</p>
+    <div class="quer-hinweis" role="alert" aria-live="polite">
+      <span class="symbol" aria-hidden="true">⟲</span>
+      <span>Bitte quer halten</span>
+    </div>
+    <script type="module" src="/src/spiel/main.ts"></script>
+  </body>
+</html>
