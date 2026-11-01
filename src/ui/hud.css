@@ -131,7 +131,7 @@
 .hud-leiste button { font-size: 17px; font-weight: 600; }
 
 /* ---------- Blatt ansetzen ---------- */
-.hud-ansetzen { position: absolute; z-index: 12; left: 50%; top: calc(var(--sat) + 136px); width: min(440px, 56vw); height: 120px; transform: translateX(-50%);
+.hud-ansetzen { position: absolute; z-index: 12; left: 50%; top: calc(var(--sat) + 128px); width: min(440px, 56vw); height: 100px; transform: translateX(-50%);
   border-radius: 20px; overflow: hidden; pointer-events: auto; touch-action: none; border: 3px solid var(--accent-hi);
   background: repeating-linear-gradient(176deg, #e9c896 0 9px, #d7ae78 9px 10px); box-shadow: 0 6px 24px rgb(0 0 0 / 50%); }
 .hud-ansetzen.aktiv { border-color: #fff; }

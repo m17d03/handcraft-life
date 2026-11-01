@@ -19,7 +19,9 @@ export interface SaegezugOptionen {
   halbeBreiteQuer: number;
   /** Mindesthub je Hälfte (px); kürzere Wackler zählen nicht. */
   minHubPx: number;
-  /** Rücklauf ab dem Extrem, ab dem eine Umkehr gilt (px, Hysterese gegen Zittern). */
+  /** Mindestweg, ab dem die Startrichtung feststeht (px). Eine Umkehr braucht zusätzlich
+   *  mindestens `minHubPx` Rücklauf ab dem Extrem: Wackler unterhalb davon gehören zur laufenden
+   *  Hälfte, so entstehen nie zwei gleichgerichtete Hälften (QA-Befund B1/B3). */
   umkehrPx: number;
   /** Wegtempo (px/ms), das als Tempo 1 gilt. */
   referenzTempoPxProMs: number;
@@ -27,7 +29,7 @@ export interface SaegezugOptionen {
 
 export const SAEGEZUG_STANDARD: Omit<SaegezugOptionen, 'mitteQuer' | 'halbeBreiteQuer'> = {
   minHubPx: 30,
-  umkehrPx: 8,
+  umkehrPx: 12,
   referenzTempoPxProMs: 0.5, // ≈ 2 Züge/s mit 120 px Hub (Gerät: Daumengefühl prüfen)
 };
 
@@ -116,7 +118,8 @@ export function saegezugSchritt(z: SaegezugZustand, p: SaegePunkt, opt: Saegezug
   if (vorlauf >= 0) {
     return { zustand: { ...z, ...quer, extrem: p.laengs, extremT: p.t }, zug: null };
   }
-  if (-vorlauf < opt.umkehrPx) return { zustand: { ...z, ...quer }, zug: null };
+  // Hysterese an die Hubgrösse gekoppelt: erst ein Rücklauf von ≥ minHubPx ist eine echte Umkehr.
+  if (-vorlauf < Math.max(opt.umkehrPx, opt.minHubPx)) return { zustand: { ...z, ...quer }, zug: null };
 
   // Umkehr: die laufende Hälfte endet am Extrem.
   const hub = Math.abs(z.extrem - z.halbStart);
@@ -128,8 +131,9 @@ export function saegezugSchritt(z: SaegezugZustand, p: SaegePunkt, opt: Saegezug
     extremT: p.t,
   };
   if (hub < opt.minHubPx) {
-    // Wackler: zählt nicht, Zug läuft weiter.
-    return { zustand: { ...z, ...quer, ...neueHaelfte }, zug: null };
+    // Nur möglich bei der ersten Hälfte nach dem Aufsetzen (kurzer Anlauf in Gegenrichtung):
+    // verwerfen und den Zug neu beginnen, damit keine gleichgerichteten Hälften gepaart werden.
+    return { zustand: { ...z, ...quer, ...neueHaelfte, haelften: 0, weg: 0, zugStartT: z.extremT }, zug: null };
   }
   const haelften = z.haelften + 1;
   const weg = z.weg + hub;

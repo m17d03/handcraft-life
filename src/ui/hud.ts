@@ -22,6 +22,7 @@ import {
   bindeWiederholtaste,
   bindeZiehen,
   sperreBrowserGesten,
+  type Bindung,
   type FlaechenModus,
 } from '../input/touch-eingabe';
 
@@ -152,6 +153,14 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
     opt.canvas.style.setProperty('-webkit-touch-callout', 'none');
   }
   aufraeumen.push(sperreBrowserGesten());
+  /** Alle Gesten-Bindungen, die von aussen abgebrochen werden können (Drehen, App-Wechsel). */
+  const bindungen: Bindung[] = [];
+  const merke = (b: Bindung): void => {
+    bindungen.push(b);
+    aufraeumen.push(() => {
+      b.dispose();
+    });
+  };
 
   const probe = document.createElement('div');
   probe.className = 'hud-safe-probe';
@@ -159,8 +168,11 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
   let safeCache: SafeArea = KEINE_SAFE_AREA;
   const safeArea = (): SafeArea => (safeCache = liesSafeArea(probe));
 
+  // Hochformat: Hinweis deckt alles ab, hinter ihm entstehen keine Befehle (QA B2).
+  const hochformat = window.matchMedia('(orientation: portrait)');
+  let gesperrt = hochformat.matches;
   const emit = (b: Befehl): void => {
-    opt.emit(b);
+    if (!gesperrt) opt.emit(b);
   };
 
   // Druck-Feedback für alle HUD-Tasten sofort beim Aufsetzen (U2), nicht erst bei :active/click.
@@ -279,7 +291,7 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
   };
   griffStandard();
   let zieh = { x0: 0, gemeldetMm: 0, griffX0: 0 };
-  aufraeumen.push(
+  merke(
     bindeZiehen(griff, {
       start: (e) => {
         ziehtMassband = true;
@@ -306,7 +318,7 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
   );
   for (const b of root.querySelectorAll<HTMLButtonElement>('[data-fein]')) {
     const d = Number(b.dataset['fein']);
-    aufraeumen.push(
+    merke(
       bindeWiederholtaste(b, () => {
         emit({ art: 'massband', deltaMm: d });
         lupeKurz();
@@ -324,7 +336,7 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
   };
   versatzZeichnen();
   let blattZieh = { x0: 0, start: 0 };
-  aufraeumen.push(
+  merke(
     bindeZiehen(ansetzen, {
       start: (e) => {
         blattZieh = { x0: e.clientX, start: versatzMm };
@@ -362,7 +374,7 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
     spur.getBoundingClientRect(); // Reflow → Animation startet neu
     spur.classList.add('zug');
   };
-  aufraeumen.push(
+  merke(
     bindeZiehen(spur, {
       start: (e) => {
         const b = spur.getBoundingClientRect();
@@ -377,6 +389,10 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
         zugGemeldet(s.zug);
       },
       ende: (e, abgebrochen) => {
+        if (!e) {
+          saege = SAEGEZUG_LEER;
+          return;
+        }
         const s = saegezugEnde(saege, punkt(e), saegeOpt);
         saege = s.zustand;
         if (!abgebrochen) zugGemeldet(s.zug);
@@ -413,6 +429,7 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
     modus(m) {
       if (m === modus) return;
       flaeche.abbrechen();
+      for (const b of bindungen) b.abbrechen();
       if (m !== 'werkbank-saegen') stuetzTaste.loesen();
       if (m === 'werkbank-ansetzen') {
         versatzMm = 0;
@@ -503,6 +520,37 @@ export function erstelleHud(container: HTMLElement, opt: HudOptionen): Hud {
   window.addEventListener('resize', beiGroesse);
   aufraeumen.push(() => {
     window.removeEventListener('resize', beiGroesse);
+  });
+
+  // Drehen, App-Wechsel, Fokusverlust: laufende Gesten sauber beenden (QA B2). Die Abbruch-Befehle
+  // (bewegen 0/0, stuetzen false) gehen noch hinaus, danach sperrt das Hochformat alle Befehle.
+  const allesAbbrechen = (): void => {
+    flaeche.abbrechen();
+    for (const b of bindungen) b.abbrechen();
+    stuetzTaste.loesen();
+  };
+  const beiAusrichtung = (): void => {
+    if (hochformat.matches === gesperrt) return;
+    if (hochformat.matches) {
+      gesperrt = false;
+      allesAbbrechen();
+      gesperrt = true;
+    } else gesperrt = false;
+  };
+  const beiSichtbarkeit = (): void => {
+    if (document.visibilityState === 'hidden') allesAbbrechen();
+  };
+  hochformat.addEventListener('change', beiAusrichtung);
+  window.addEventListener('resize', beiAusrichtung);
+  window.addEventListener('blur', allesAbbrechen);
+  window.addEventListener('pagehide', allesAbbrechen);
+  document.addEventListener('visibilitychange', beiSichtbarkeit);
+  aufraeumen.push(() => {
+    hochformat.removeEventListener('change', beiAusrichtung);
+    window.removeEventListener('resize', beiAusrichtung);
+    window.removeEventListener('blur', allesAbbrechen);
+    window.removeEventListener('pagehide', allesAbbrechen);
+    document.removeEventListener('visibilitychange', beiSichtbarkeit);
   });
 
   root.dataset['modus'] = modus;

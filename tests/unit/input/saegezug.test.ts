@@ -55,9 +55,9 @@ describe('Sägezug-Erkennung', () => {
       if (s.zug) gemeldetBei.push(i + 1);
     });
     expect(gemeldetBei).toHaveLength(1);
-    // Umkehr am Ende der 2. Hälfte (Punkt 20) wird erkannt, sobald der Rücklauf ≥ umkehrPx ist
+    // Umkehr am Ende der 2. Hälfte (Punkt 20) wird erkannt, sobald der Rücklauf ≥ minHubPx (30 px) ist
     expect(gemeldetBei[0]).toBeGreaterThan(20);
-    expect(gemeldetBei[0]).toBeLessThanOrEqual(22);
+    expect(gemeldetBei[0]).toBeLessThanOrEqual(23);
   });
 
   it('Zittern unterhalb der Hysterese ist keine Umkehr', () => {
@@ -121,5 +121,50 @@ describe('Sägezug-Erkennung', () => {
 
   it('Zeit spielt für die Erkennung keine Rolle (langsamer Hauptthread)', () => {
     expect(erkenneSaegezuege(bahn(4, { msProPunkt: 400 }), OPT)).toHaveLength(2);
+  });
+
+  // QA B1: Wackler dürfen keine gleichgerichteten Hälften zu einem Zug paaren.
+  const linear = (eckpunkte: number[], schritt = 5): SaegePunkt[] => {
+    const p: SaegePunkt[] = [{ laengs: eckpunkte[0] ?? 0, quer: 100, t: 0 }];
+    let t = 0;
+    for (let i = 1; i < eckpunkte.length; i++) {
+      const von = eckpunkte[i - 1] ?? 0;
+      const nach = eckpunkte[i] ?? 0;
+      const n = Math.max(1, Math.round(Math.abs(nach - von) / schritt));
+      for (let k = 1; k <= n; k++) p.push({ laengs: von + ((nach - von) * k) / n, quer: 100, t: (t += 10) });
+    }
+    return p;
+  };
+
+  it('B1: vorwärts mit Wacklern (0→60→45→120→105→180→165→240) ergibt keinen Zug', () => {
+    expect(erkenneSaegezuege(linear([0, 60, 45, 120, 105, 180, 165, 240]), OPT)).toHaveLength(0);
+  });
+
+  it('B1: 0→60→45→120→0 ergibt genau einen Zug mit Hälften 120 + 120', () => {
+    const zuege = erkenneSaegezuege(linear([0, 60, 45, 120, 0]), OPT);
+    expect(zuege).toHaveLength(1);
+    expect(zuege[0]?.hubPx).toBeCloseTo(120);
+  });
+
+  it('B1: kurzer Anlauf in Gegenrichtung wird verworfen, nicht gepaart', () => {
+    // 20 px hoch (zu kurz), dann 120 runter, 120 hoch = 1 Zug
+    expect(erkenneSaegezuege(linear([100, 80, 200, 80]), OPT)).toHaveLength(1);
+  });
+
+  // QA B3: Zittern ±10 px auf jeder Messung darf die Zugzahl nie verändern.
+  it('B3: Fuzz – Zittern ±10 px, 2 × 200 Läufe, 0 Fehler', () => {
+    let seed = 12345;
+    const zufall = (): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    let fehler = 0;
+    for (const n of [10, 20]) {
+      for (let lauf = 0; lauf < 200; lauf++) {
+        const p = bahn(8, { n, msProPunkt: 15 }).map((x) => ({ ...x, laengs: x.laengs + (zufall() * 2 - 1) * 10 }));
+        if (erkenneSaegezuege(p, OPT).length !== 4) fehler += 1;
+      }
+    }
+    expect(fehler).toBe(0);
   });
 });

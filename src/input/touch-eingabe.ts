@@ -251,10 +251,17 @@ export function bindeSpielflaeche(o: SpielflaechenOptionen): Spielflaeche {
 export interface ZiehHandler {
   start(e: PointerEvent): void;
   bewege(e: PointerEvent): void;
-  ende(e: PointerEvent, abgebrochen: boolean): void;
+  /** e = null: von aussen abgebrochen (Drehen, App-Wechsel, Moduswechsel). */
+  ende(e: PointerEvent | null, abgebrochen: boolean): void;
 }
 
-export function bindeZiehen(el: HTMLElement, h: ZiehHandler): Aufraeumen {
+/** Bindung mit Abbruch von aussen (laufende Geste beenden, ohne dass der Finger abhebt). */
+export interface Bindung {
+  abbrechen(): void;
+  dispose(): void;
+}
+
+export function bindeZiehen(el: HTMLElement, h: ZiehHandler): Bindung {
   const weg: Aufraeumen[] = [];
   let aktiv: number | null = null;
   an(el, 'pointerdown', (e) => {
@@ -276,8 +283,18 @@ export function bindeZiehen(el: HTMLElement, h: ZiehHandler): Aufraeumen {
   };
   an(el, 'pointerup', ende, weg);
   an(el, 'pointercancel', ende, weg);
-  return () => {
-    for (const w of weg) w();
+  const abbrechen = (): void => {
+    if (aktiv === null) return;
+    aktiv = null;
+    el.classList.remove('aktiv');
+    h.ende(null, true);
+  };
+  return {
+    abbrechen,
+    dispose: () => {
+      abbrechen();
+      for (const w of weg) w();
+    },
   };
 }
 
@@ -324,7 +341,7 @@ export function bindeHaltetaste(el: HTMLElement, beiWechsel: (an: boolean) => vo
 }
 
 /** Taste mit Sofortauslösung beim Aufsetzen und Wiederholung beim Halten (Feintasten ±0,5 mm). */
-export function bindeWiederholtaste(el: HTMLElement, ausloesen: () => void, verzoegerungMs = 450, intervallMs = 100): Aufraeumen {
+export function bindeWiederholtaste(el: HTMLElement, ausloesen: () => void, verzoegerungMs = 450, intervallMs = 100): Bindung {
   const weg: Aufraeumen[] = [];
   let timer = 0;
   let aktiv: number | null = null;
@@ -358,7 +375,10 @@ export function bindeWiederholtaste(el: HTMLElement, ausloesen: () => void, verz
     el.removeEventListener('click', klick);
     stopp();
   });
-  return () => {
-    for (const w of weg) w();
+  return {
+    abbrechen: stopp,
+    dispose: () => {
+      for (const w of weg) w();
+    },
   };
 }

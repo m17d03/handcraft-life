@@ -111,6 +111,93 @@ test('Drehen mitten im Werkbank-Modus: Zustand bleibt, Hinweis kommt und geht', 
   await expect(page.locator('.hud-massband-griff')).toBeVisible();
 });
 
+test('B2: Drehen ins Hochformat und Fokusverlust beenden laufende Gesten; hochkant keine Befehle', async ({ page }) => {
+  await page.setViewportSize({ width: 734, height: 343 });
+  await laden(page);
+  const w = 734;
+  const h = 343;
+  // Stick aktiv, dann drehen → bewegen 0/0, Stick weg
+  await leeren(page);
+  await zeiger(page, [{ t: 'down', id: 1, x: w * 0.25, y: h * 0.6 }, { t: 'move', id: 1, x: w * 0.25, y: h * 0.6 - 40 }]);
+  await page.setViewportSize({ width: 393, height: 734 });
+  await expect(page.getByRole('heading', { name: 'Bitte quer halten' })).toBeVisible();
+  await expect(page.locator('.hud-stick')).toHaveCount(0);
+  let b = await befehle(page);
+  expect(b.filter((x) => x.art === 'bewegen').at(-1)).toEqual({ art: 'bewegen', vorwaerts: 0, seitwaerts: 0 });
+  // Hochkant: auch Ereignisse direkt auf der Spielfläche erzeugen keine Befehle
+  await leeren(page);
+  await page.evaluate(() => {
+    const f = document.querySelector('.hud-flaeche');
+    const ev = (typ: string, x: number): void => {
+      f?.dispatchEvent(new PointerEvent(typ, { pointerId: 2, pointerType: 'touch', clientX: x, clientY: 300, bubbles: true }));
+    };
+    ev('pointerdown', 300);
+    ev('pointermove', 340);
+    ev('pointerup', 340);
+  });
+  await page.waitForTimeout(50);
+  expect(await befehle(page)).toEqual([]);
+
+  // Zurück quer, Sägen: Stützen gehalten + Wischen, dann Fokusverlust → stuetzen false, Spur frei
+  await page.setViewportSize({ width: 734, height: 343 });
+  await expect(page.getByRole('heading', { name: 'Bitte quer halten' })).toBeHidden();
+  await page.evaluate(() => window.__hudDemo?.hud.modus('werkbank-saegen'));
+  const st = await mitte(page.getByRole('button', { name: /Abfall\s*stützen/ }));
+  const spur = await mitte(page.locator('.hud-saegespur'));
+  await leeren(page);
+  await zeiger(page, [
+    { t: 'down', id: 5, x: st.x, y: st.y },
+    { t: 'down', id: 6, x: spur.x, y: spur.top + 30 },
+    { t: 'move', id: 6, x: spur.x, y: spur.top + 120 },
+  ]);
+  await expect(page.locator('.hud-saegespur')).toHaveClass(/aktiv/);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  b = await befehle(page);
+  expect(b.filter((x) => x.art === 'stuetzen')).toEqual([{ art: 'stuetzen', an: true }, { art: 'stuetzen', an: false }]);
+  await expect(page.locator('.hud-saegespur')).not.toHaveClass(/aktiv/);
+  await expect(page.locator('.hud-stuetzen')).toHaveAttribute('aria-pressed', 'false');
+  // Späte Ereignisse der abgebrochenen Finger erzeugen keinen Zug
+  await leeren(page);
+  await zeiger(page, [{ t: 'move', id: 6, x: spur.x, y: spur.top + 30 }, { t: 'up', id: 6, x: spur.x, y: spur.top + 30 }]);
+  expect((await befehle(page)).filter((x) => x.art === 'sägezug')).toEqual([]);
+});
+
+test('B4/U1: Abstand ≥ 8 pt zwischen allen Touch-Zielen, mit Safe Area, 734 × 343 und 852 × 393', async ({ page }) => {
+  for (const vp of [{ width: 734, height: 343 }, { width: 852, height: 393 }]) {
+    await page.setViewportSize(vp);
+    await page.goto('./hud-demo/?notch=1');
+    await page.waitForFunction(() => document.body.dataset['state'] === 'ready');
+    for (const m of ['erkunden', 'werkbank-messen', 'werkbank-ansetzen', 'werkbank-saegen', 'ergebnis'] as const) {
+      const zuNah = await page.evaluate((modus) => {
+        const hud = window.__hudDemo?.hud;
+        if (!hud) throw new Error('kein HUD');
+        hud.modus(modus);
+        hud.messwertAnzeigen(450);
+        hud.ergebnisKarte(modus === 'ergebnis' ? { stufe: 'B', q: 80, hauptursache: 'x', preis: 14 } : null);
+        const el = [...document.querySelectorAll('.hud button, .hud [data-touch]')].filter((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && !e.classList.contains('hud-flaeche');
+        });
+        const fehler: string[] = [];
+        for (let i = 0; i < el.length; i++) {
+          for (let j = i + 1; j < el.length; j++) {
+            const a = el[i];
+            const b = el[j];
+            if (!a || !b || a.contains(b) || b.contains(a)) continue;
+            const ra = a.getBoundingClientRect();
+            const rb = b.getBoundingClientRect();
+            const dx = Math.max(rb.left - ra.right, ra.left - rb.right);
+            const dy = Math.max(rb.top - ra.bottom, ra.top - rb.bottom);
+            if (Math.max(dx, dy) < 8) fehler.push(`${a.className} / ${b.className}: ${String(Math.round(Math.max(dx, dy)))} pt`);
+          }
+        }
+        return fehler;
+      }, m);
+      expect(zuNah, `${String(vp.width)}x${String(vp.height)} ${m}`).toEqual([]);
+    }
+  }
+});
+
 test.describe('Querformat', () => {
   test.beforeEach(async ({ page }) => {
     test.skip(hochkant(page), 'Vertical Slice nur quer (ADR 0004); hochkant nur Hinweis');
