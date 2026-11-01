@@ -171,6 +171,7 @@ const STIL = `
 .install-hinweis-text { flex: 1; min-width: 0; }
 .install-hinweis-text strong { display: block; font-size: 16px; color: #ffd08a; margin-bottom: 2px; }
 .install-hinweis-text p { margin: 4px 0 0; }
+.install-hinweis-ziel { white-space: nowrap; }
 .install-hinweis-teilen { display: inline-block; width: 18px; height: 18px; vertical-align: -3px; }
 .install-hinweis-zu {
   flex: none; width: 48px; height: 48px; display: grid; place-items: center; padding: 0;
@@ -204,7 +205,7 @@ export function zeigeInstallHinweis(wurzel: HTMLElement, beiSchliessen: () => vo
     <div class="install-hinweis-text">
       <strong id="install-hinweis-titel">Spielstand sichern</strong>
       <p>Safari löscht Daten von Webseiten, die 7 Tage nicht geöffnet wurden. Als App auf dem Home-Bildschirm bleibt deine Werkstatt erhalten.</p>
-      <p>So geht's: ${TEILEN_SVG} <b>Teilen</b> tippen → <b>„Zum Home-Bildschirm“</b>.</p>
+      <p>So geht's: ${TEILEN_SVG} <b>Teilen</b> tippen → <b class="install-hinweis-ziel">„Zum Home-Bildschirm“</b>.</p>
     </div>
     <button type="button" class="install-hinweis-zu" aria-label="Hinweis schliessen">✕</button>`;
   const zu = el.querySelector<HTMLButtonElement>('.install-hinweis-zu');
