@@ -49,6 +49,27 @@ export interface WerkstattViewZustand {
   risse: { a: number | null; b: number | null };
   /** Angezeigte Endwinkel (Grad, echt; gezeichnet überzeichnet). */
   winkel: { a: number; b: number };
+  /** Ticket 018: Diagnose für Debug-Overlay und E2E-Fehlermeldungen (Inhalt kann sich ändern). */
+  diagnose: WerkstattDiagnose;
+}
+
+export interface WerkstattDiagnose {
+  /** GL_RENDERER / unmaskiert, z. B. „llvmpipe“ = Software-Rendering */
+  glRenderer: string;
+  /** unterstützte komprimierte Texturformate (Erweiterungsnamen) */
+  komprimiert: string[];
+  assetLadeMs: number | null;
+  assetFehler: string | null;
+  /** KTX2-Zielformate laut KTX2Loader.detectSupport */
+  ktx2: Record<string, boolean> | null;
+  texturFormat: string | null;
+  /** aktuelle Pixeldichte der Renderauflösung */
+  pixeldichte: number;
+  /** Abstand der letzten Frames (ms) und Dauer von renderer.render darin (ms, CPU-Seite) */
+  frameAbstandMs: number[];
+  renderMs: number[];
+  /** Fehler aus der Render-Schleife (Schleife läuft weiter) */
+  schleifenFehler: string[];
 }
 
 /**

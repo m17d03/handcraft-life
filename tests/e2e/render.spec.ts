@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 // Typen bringen die globalen Deklarationen window.__perf / window.__view mit.
 import type {} from '../../src/perf/perf-snapshot';
 import type { WerkstattViewDebug } from '../../src/render/view-api';
+import { diagnose, notiz } from './diagnose';
 
 declare global {
   interface Window {
@@ -55,24 +56,32 @@ test.describe('Spielseite /spiel/', () => {
       test.skip(true, 'Browser ohne WebGL 2');
       return;
     }
-    await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
+    // Ticket 018: Zeitreihe (Frames, Draw Calls) und Asset-/GL-Diagnose – in CI als Annotation, sonst in der Fehlermeldung
+    const vorher = await diagnose(page, 6000);
+    notiz(`018 render ${test.info().project.name}`, vorher);
+    try {
+      await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
+    } catch (e) {
+      throw new Error(`Kein Frame mit Draw Calls: ${JSON.stringify({ vorher, nachher: await diagnose(page), probleme })}`, { cause: e });
+    }
     const perf = await page.evaluate(() => window.__perf?.());
+    const diag = JSON.stringify({ perf, vorher, probleme });
     expect(perf).toBeDefined();
     if (!perf) return;
     expect(perf.schema).toBe(1);
     expect(perf.engine).toBe('three');
     expect(perf.engineVersion).toBe('187');
     expect(perf.scene).toBe('werkstatt');
-    expect(perf.timeToPlayableMs).not.toBeNull();
-    expect(perf.timeToFirstFrameMs).not.toBeNull();
-    expect(perf.drawCalls).toBeLessThan(80);
-    expect(perf.triangles).toBeGreaterThan(0);
-    expect(perf.triangles).toBeLessThan(150_000);
-    expect(perf.renderScale).toBeLessThanOrEqual(2.01);
+    expect(perf.timeToPlayableMs, diag).not.toBeNull();
+    expect(perf.timeToFirstFrameMs, diag).not.toBeNull();
+    expect(perf.drawCalls, diag).toBeLessThan(80);
+    expect(perf.triangles, diag).toBeGreaterThan(0);
+    expect(perf.triangles, diag).toBeLessThan(150_000);
+    expect(perf.renderScale, diag).toBeLessThanOrEqual(2.01);
     expect(['msaa', 'none']).toContain(perf.aa);
     if (perf.aa === 'msaa') expect(perf.msaaSamples).toBeGreaterThan(0);
-    expect(perf.contextLostCount).toBe(0);
-    expect(perf.errorCount).toBe(0);
+    expect(perf.contextLostCount, diag).toBe(0);
+    expect(perf.errorCount, diag).toBe(0);
     expect(probleme).toEqual([]);
   });
 
@@ -196,7 +205,12 @@ test.describe('Spielseite /spiel/', () => {
     await page.evaluate(() => { (window as unknown as { __lose: WEBGL_lose_context }).__lose.restoreContext(); });
     await expect.poll(() => page.evaluate(() => window.__view?.zustand().kontextVerloren), LANG).toBe(false);
     await expect.poll(() => page.evaluate(() => window.__view?.zustand().frames ?? 0), LANG).toBeGreaterThan(framesVorher + 1);
-    await expect.poll(() => page.evaluate(() => window.__perf?.().drawCalls ?? 0), LANG).toBeGreaterThan(0);
+    // Ticket 018: Zeitreihe nach der Wiederherstellung (in CI als Annotation, sonst in der Fehlermeldung)
+    const nachWieder = await diagnose(page, 4000);
+    notiz(`018 kontext ${test.info().project.name}`, nachWieder);
+    await expect
+      .poll(() => page.evaluate(() => window.__perf?.().drawCalls ?? 0), { ...LANG, message: JSON.stringify({ nachWieder, probleme }) })
+      .toBeGreaterThan(0);
     const id = await page.evaluate(() => {
       const p = window.__view?.weltNachBildschirm(1000);
       return p ? window.__view?.pick(p.x, p.y) : null;
