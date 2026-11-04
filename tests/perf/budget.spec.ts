@@ -2,10 +2,10 @@
  * Budget-Prüfung Vertical Slice /spiel/ (Ticket 015, Skill perf-budget-check, QUALITY_STANDARDS P3–P7, P10).
  *
  * Standardrunde (ein Durchlauf, frischer Spielstand, Saat 7):
- *   1. Erkunden: laden bis spielbar, 2 s stehen, einmal rundum umsehen (rechte Bildhälfte ziehen) und zurück.
- *   2. Werkbank: an die Bank, Bezugsende wählen, 600 mm messen, anreissen, ansetzen, sägen bis zum Ergebnis.
- *   3. Ergebnis: Brett getrennt, Reststück daneben, 2 s stehen.
- * Gemessen wird über `window.__perf()` (PerfSnapshot v1) alle 250 ms; Draw Calls und Dreiecke = Maximum je Ansicht.
+ *   1. Erkunden: laden bis spielbar, 1 s stehen, einmal rundum umsehen (rechte Bildhälfte ziehen) und zurück.
+ *   2. Werkbank: an die Bank, Bezugsende wählen, messen, anreissen, „Sägen ›“, 4 Sägezüge (Sägen-Zustand).
+ * Gemessen wird über `window.__perf()` (PerfSnapshot v1) nach jedem Frame in der Seite (`budgetSammler`);
+ * Draw Calls und Dreiecke = Maximum je Ansicht. Bei 0 Draw Calls/Dreiecken: MESSFEHLER statt „eingehalten“.
  *
  * Harte Grenzen = Testfehler (P4 Draw Calls ≤ 120, P5 Dreiecke ≤ 300 000, P6 Texturspeicher ≤ 200 MB,
  * P7 Download bis spielbar ≤ 25 MB). Ziele (80 / 150 000 / 120 MB / 15 MB) nur als Warnung im Bericht.
@@ -52,9 +52,6 @@ export const BUDGET = {
   texturMB: { ziel: 120, grenze: 200 },
   downloadMB: { ziel: 15, grenze: 25 },
 } as const;
-
-/** Gesamtzeit, nach der die Runde nicht mehr bis zum Ergebnis weitersägt (CI-Schritt soll < 5 min bleiben). */
-const ZEIT_ERGEBNIS_MS = 150_000;
 
 // ------------------------------------------------------------------ Eingabe (wie tests/e2e/vertical-slice.spec.ts)
 
@@ -255,8 +252,8 @@ async function rundumUmsehen(page: Page): Promise<number> {
     const wisch = async (richtung: 1 | -1): Promise<void> => {
       const start = richtung === 1 ? x0 : x0 + 180;
       sende('down', start);
-      for (let i = 1; i <= 6; i++) {
-        sende('move', start + richtung * 30 * i);
+      for (let i = 1; i <= 3; i++) {
+        sende('move', start + richtung * 60 * i);
         await frame();
       }
       sende('up', start + richtung * 180);
@@ -370,12 +367,11 @@ const STATUS_TEXT: Record<Status, string> = {
 
 const bewerte = (wert: number, b: { ziel: number; grenze: number }): Status => (wert > b.grenze ? 'grenze' : wert >= b.ziel ? 'warnung' : 'ok');
 
-test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen, Ergebnis)', async ({ page, browserName, baseURL }) => {
+test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen)', async ({ page, browserName, baseURL }) => {
   const start = Date.now();
   const erkunden = neueAnsicht('Erkunden (stehen + rundum umsehen)');
   const saegenA = neueAnsicht('Werkbank, Sägen');
-  const ergebnisA = neueAnsicht('Werkbank, Ergebnis (Brett getrennt)');
-  const ansichten = [erkunden, saegenA, ergebnisA];
+  const ansichten = [erkunden, saegenA];
 
   // Antworten mitschneiden: Download bis spielbar und KTX2-Kopfdaten (auch in GLB eingebettet)
   let spielbar = false;
@@ -424,31 +420,23 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen, Ergebnis)', asyn
 
     // 1) Erkunden: stehen, dann einmal rundum umsehen und genauso weit zurück (Blick wieder auf die Werkbank)
     await beginne(page, erkunden);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1000);
     const grad = await rundumUmsehen(page);
     await beende(page, erkunden);
     erkunden.hinweis = grad > 0.1 ? `umgesehen ${f(grad)}° und zurück` : 'Umsehen ohne Wirkung';
 
     // 2) Werkbank bis zum Sägen, dann sägen (Messung während der Züge)
+    const wegStart = Date.now();
     await zurWerkbank(page);
     await bisZumSaegen(page);
+    saegenA.hinweis = `Weg bis „Sägen“ ${f((Date.now() - wegStart) / 1000)} s`;
     await beginne(page, saegenA);
-    for (let runde = 0; runde < 8; runde++) {
-      await saegen(page, 2);
-      if ((await phase(page)) === 'ergebnis') break;
-      if (Date.now() - start > ZEIT_ERGEBNIS_MS) {
-        ergebnisA.hinweis = 'nicht erreicht (Zeitgrenze der Messrunde)';
-        break;
-      }
-    }
+    // 4 Züge (2 × 2). Ein ganzer Schnitt bis zur Ergebniskarte dauert mit Software-GPU (Frames 0,5–1,3 s) Minuten
+    // und sprengt das 5-min-Ziel des CI-Schritts; die Ergebnis-Ansicht hat zudem weniger Dreiecke (gemessen 8 460).
+    await saegen(page, 2);
+    await saegen(page, 2);
     await beende(page, saegenA);
-
-    // 3) Ergebnis
-    if ((await phase(page)) === 'ergebnis') {
-      await beginne(page, ergebnisA);
-      await page.waitForTimeout(2000);
-      await beende(page, ergebnisA);
-    } else if (!ergebnisA.hinweis) ergebnisA.hinweis = 'nicht erreicht';
+    saegenA.hinweis += `, ${String((await zustand(page))?.arbeit?.zuege.length ?? 0)} Züge`;
     compressedUploads = (await page.evaluate(() => window.__budget?.compressedTexImage2D)) ?? 0;
   } catch (e) {
     abbruch = e instanceof Error ? e.message.split('\n')[0] ?? e.message : String(e);
@@ -482,7 +470,7 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen, Ergebnis)', asyn
   if (assets !== 'modelle' && !abbruch) messfehler.push(`Assets = '${assets}' (Platzhalter statt Modelle aus Ticket 012)`);
   for (const a of ansichten) {
     if (!a.erreicht) continue;
-    if (a.proben === 0) messfehler.push(`${a.name}: __perf() nicht verfügbar`);
+    if (a.proben === 0) messfehler.push(`${a.name}: kein gezeichneter Frame gemeldet (__perf() fehlt oder frames = 0 – vgl. Ticket 018)`);
     else if (a.drawCallsMax === 0 || a.dreieckeMax === 0)
       messfehler.push(`${a.name}: __perf() meldet ${String(a.drawCallsMax)} Draw Calls / ${String(a.dreieckeMax)} Dreiecke – Szene nicht gezeichnet oder GL-Zählhülle greift nicht (vgl. Ticket 018)`);
   }
