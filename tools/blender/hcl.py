@@ -490,19 +490,22 @@ def setze_material(ob, mat):
 # UV und Backen
 # ---------------------------------------------------------------------------------------------
 
-def uv_smart(ob, winkel=60, rand=0.008, name='UVMap'):
-    aktiv(ob)
-    if name not in ob.data.uv_layers:
-        ob.data.uv_layers.new(name=name)
-    ob.data.uv_layers.active = ob.data.uv_layers[name]
+def uv_smart(obs, winkel=60, rand=0.008, name='UVMap'):
+    """Smart-UV für ein Objekt oder mehrere (gemeinsamer Atlas)."""
+    obs = obs if isinstance(obs, (list, tuple)) else [obs]
+    for ob in obs:
+        if name not in ob.data.uv_layers:
+            ob.data.uv_layers.new(name=name)
+        ob.data.uv_layers.active = ob.data.uv_layers[name]
+    aktiv(*obs)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.uv.smart_project(angle_limit=math.radians(winkel), island_margin=rand, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
 
-def uv_packen(ob, rand=0.006):
-    aktiv(ob)
+def uv_packen(obs, rand=0.006):
+    aktiv(*(obs if isinstance(obs, (list, tuple)) else [obs]))
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.uv.select_all(action='SELECT')
@@ -569,23 +572,28 @@ def _rueckbau(alt):
         m.node_tree.nodes.remove(em)
 
 
-def backe(ob, groesse, kanaele=('farbe', 'rauheit', 'metall', 'ao', 'normal'), ao_abstand_mm=20.0, ao_samples=64,
+def backe(obs, groesse, kanaele=('farbe', 'rauheit', 'metall', 'ao', 'normal'), ao_abstand_mm=20.0, ao_samples=64,
           hochpoly=None, kaefig_mm=2.0, uv='UVMap'):
-    """Backt die Kanäle von `ob` (aktive UV `uv`) in Bilder groesse = (w, h). Rückgabe dict name → float-Array (h, w, 4),
-    Farbe linear. Für 'normal' optional High-Poly-Quelle (selected to active)."""
+    """Backt die Kanäle von `obs` (ein Objekt oder Liste, gemeinsamer UV-Atlas `uv`) in Bilder groesse = (w, h).
+    Rückgabe dict name → float-Array (h, w, 4), Farbe linear. 'normal' optional aus High-Poly (selected to active)."""
+    obs = obs if isinstance(obs, (list, tuple)) else [obs]
     w, h = groesse
     sc = bpy.context.scene
     sc.render.bake.margin = 8
     sc.render.bake.margin_type = 'EXTEND'
-    ob.data.uv_layers.active = ob.data.uv_layers[uv]
-    for l in ob.data.uv_layers:
-        l.active_render = l.name == uv
-    mats = _mats(ob)
+    for ob in obs:
+        ob.data.uv_layers.active = ob.data.uv_layers[uv]
+        for l in ob.data.uv_layers:
+            l.active_render = l.name == uv
+    mats = list(dict.fromkeys(m for ob in obs for m in _mats(ob)))
     erg = {}
     for k in kanaele:
-        img = _bild(f'{ob.name}_{k}', w, h, nicht_farbe=(k != 'farbe'))
-        ziele = _ziel_knoten(mats + (_mats(hochpoly) if (hochpoly and k == 'normal') else []), img)
-        aktiv(ob)
+        img = _bild(f'{obs[0].name}_{k}', w, h, nicht_farbe=(k != 'farbe'))
+        if k == 'normal':
+            img.generated_color = (0.5, 0.5, 1.0, 1.0)
+        hp_mats = _mats(hochpoly) if (hochpoly and k == 'normal') else []
+        ziele = _ziel_knoten(mats + [m for m in hp_mats if m not in mats], img)
+        aktiv(*obs)
         sc.render.bake.use_selected_to_active = False
         if k in ('farbe', 'rauheit', 'metall'):
             sc.cycles.samples = 1
@@ -602,14 +610,12 @@ def backe(ob, groesse, kanaele=('farbe', 'rauheit', 'metall', 'ao', 'normal'), a
             sc.cycles.samples = 8
             sc.render.bake.normal_space = 'TANGENT'
             if hochpoly is not None:
-                aktiv(ob, hochpoly)
-                hochpoly.select_set(True)
-                bpy.context.view_layer.objects.active = ob
-                sc.render.bake.use_selected_to_active = True
-                sc.render.bake.cage_extrusion = kaefig_mm / 1000
-                sc.render.bake.max_ray_distance = kaefig_mm * 2 / 1000
-                bpy.ops.object.bake(type='NORMAL', margin=8, use_clear=True, use_selected_to_active=True,
-                                    cage_extrusion=kaefig_mm / 1000)
+                for i, ob in enumerate(obs):
+                    aktiv(ob, hochpoly)
+                    bpy.context.view_layer.objects.active = ob
+                    sc.render.bake.max_ray_distance = kaefig_mm * 2 / 1000
+                    bpy.ops.object.bake(type='NORMAL', margin=8, use_clear=(i == 0), use_selected_to_active=True,
+                                        cage_extrusion=kaefig_mm / 1000)
             else:
                 bpy.ops.object.bake(type='NORMAL', margin=8, use_clear=True)
         erg[k] = _pixel(img)

@@ -35,7 +35,7 @@ async function bericht(pfad) {
         }
         tris += (p.getIndices()?.getCount() ?? 0) / 3;
       }
-      const mats = mesh.listPrimitives().map((p) => p.getMaterial()?.getName()).join('+');
+      const mats = mesh.listPrimitives().map((p) => `${p.getMaterial()?.getName()}(${p.listSemantics().join('/')})`).join('+');
       box = ` box [${mm(min)}] … [${mm(max)}] ${tris} Dr. ${mats}`;
     }
     const kinder = n.listChildren().map((c) => c.getName()).join(',');
