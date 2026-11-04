@@ -94,18 +94,23 @@ def platte():
     bpy.data.objects.remove(vereint)
     bm = bmesh.new()
     bm.from_mesh(ob.data)
+    # Boolean-Ergebnis in saubere Dreiecke (N-Ecke mit Löchern backen und exportieren nicht zuverlässig)
     bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(1), verts=bm.verts, edges=bm.edges)
+    bmesh.ops.connect_verts_concave(bm, faces=bm.faces)
+    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='BEAUTY', ngon_method='EAR_CLIP')
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(ob.data)
     bm.free()
     box_uv(ob, faser=0)
     hcl.glaetten(ob, 35)
+    ob.name = ob.data.name = 'Platte'
     return ob
 
 
 def gestell():
     g = []
     for x in (-630, 630):
-        g.append(brett(f'Kufe{x}', 90, 80, 660, (x, 40, 0), 4))
+        g.append(brett(f'Kufe{x}', 90, 80, 640, (x, 40, 0), 4))
         g.append(brett(f'Kopfriegel{x}', 110, 70, 560, (x, 805, 0), 3))
         for z in (-215, 215):
             g.append(brett(f'Bein{x}{z}', 80, 760, 80, (x, 460, z), 3))
@@ -116,9 +121,9 @@ def gestell():
         z = -170 + i * 85
         g.append(brett(f'Ablage{i}', 1180, 18, 78, (0, 324, z), 2))
     # Keile der durchgezapften Zargen (aussen an den Beinen)
-    for x in (-690, 690):
+    for x in (-677.5, 677.5):
         for z in (-215, 215):
-            g.append(brett(f'Keil{x}{z}', 30, 70, 14, (x, 260, z), 2))
+            g.append(brett(f'Keil{x}{z}', 15, 70, 14, (x, 260, z), 2))
     ob = hcl.vereine(g, 'Gestell')
     hcl.glaetten(ob, 35)
     return ob

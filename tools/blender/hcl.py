@@ -95,6 +95,8 @@ def anwenden(ob):
     """Modifikatoren/Kurve → reines Mesh (gleiches Objekt bleibt, Daten ersetzt)."""
     dg = bpy.context.evaluated_depsgraph_get()
     me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    if len(me.materials) and all(m is None for m in me.materials):
+        me.materials.clear()  # Boolean legt sonst einen leeren Slot an (Flächen zeigen dann auf „kein Material“)
     if ob.type == 'MESH':
         ob.modifiers.clear()
         alt = ob.data
