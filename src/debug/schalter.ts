@@ -80,7 +80,7 @@ export function bindeDebugSchalter(el: HTMLElement, umschalten: () => void, o: M
     e.stopPropagation();
     start = { id: e.pointerId, t: e.timeStamp, x: e.clientX, y: e.clientY, weg: 0 };
     el.classList.remove('tipp');
-    void el.offsetWidth; // Animation neu starten
+    el.getBoundingClientRect(); // Reflow: Animation startet neu
     el.classList.add('tipp');
     window.clearTimeout(tippTimer);
     tippTimer = window.setTimeout(() => {
