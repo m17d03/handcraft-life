@@ -8,6 +8,7 @@ Index aller Entscheidungen; Details in `docs/decisions/`. Nur der Director setzt
 | 0002 | 2026-10-31 | Module im selben Code mit Manifest, IDs, materialunabhängige Kern-Prozesse | angenommen | [0002](decisions/0002-modulvertrag.md) |
 | 0003 | 2026-10-31 | Spielstand als versioniertes JSON-Dokument in IndexedDB mit Migrationskette | angenommen | [0003](decisions/0003-speicherformat.md) |
 | 0004 | 2026-10-31 | Vertical Slice nur Querformat, durchgehend Ich-Sicht (Konzept B) | angenommen | [0004](decisions/0004-querformat-ich-sicht.md) |
+| 0005 | 2026-11-04 | Blender (bpy, headless) wird das Werkzeug für 3D-Modelle | angenommen | [0005](decisions/0005-blender-als-asset-werkzeug.md) |
 
 ## Kleinere Director-Entscheide (ohne ADR)
 | Datum | Entscheid | Grund |
