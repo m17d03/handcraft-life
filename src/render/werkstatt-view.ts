@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import type { PerfMelder } from '../perf/perf-snapshot';
 import { ladeWerkstattAssets, type WerkstattAssets } from './assets';
-import { aufloesungsGrenzen, DynamischeAufloesung, type AufloesungsParameter } from './aufloesung';
+import { aufloesungsGrenzen, DynamischeAufloesung, istSoftwareRenderer, type AufloesungsParameter } from './aufloesung';
 import { bildschirmNachBrettMm, brettMmNachBildschirm, type BrettLage } from './brett-koordinaten';
 import { erzeugeHolzTexturen, type HolzTexturen } from './holztextur';
 import { arbeitsPose, IchKamera, Kamerafahrt, type KameraPose } from './ich-kamera';
@@ -35,6 +35,11 @@ export interface WerkstattOptionen {
   readonly kamerafahrtMs?: number;
   /** Ladefehler der Assets (Szene läuft mit Platzhaltern weiter). */
   readonly beiAssetFehler?: (fehler: unknown) => void;
+  /**
+   * GL-Renderer-Name des Geräts (vor dem Erzeugen ermittelt). Software-Rendering → Pixeldichte 1, kein MSAA.
+   * Ohne Angabe ermittelt `erzeugeWerkstattView` ihn selbst.
+   */
+  readonly glRenderer?: string;
 }
 
 const endlich = (v: number, ersatz = 0): number => (Number.isFinite(v) ? v : ersatz);
@@ -80,6 +85,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
   private readonly renderDauern: number[] = [];
   private readonly schleifenFehler: string[] = [];
   private readonly glRenderer: string;
+  /** Software-Rendering erkannt: Pixeldichte 1, kein MSAA */
+  private readonly software: boolean;
   private readonly komprimiert: string[];
 
   constructor(
@@ -88,7 +95,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
   ) {
     this.perf = opt.perf ?? null;
     this.fahrt = new Kamerafahrt(opt.kamerafahrtMs ?? ARBEITSANSICHT.fahrtMs);
-    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, stencil: false, powerPreference: 'high-performance' });
+    this.software = istSoftwareRenderer(opt.glRenderer ?? '');
+    const r = new THREE.WebGLRenderer({ canvas, antialias: !this.software, alpha: false, stencil: false, powerPreference: 'high-performance' });
     this.renderer = r;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 0.78;
@@ -99,7 +107,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
     r.shadowMap.autoUpdate = false;
     r.shadowMap.needsUpdate = true;
 
-    const grenzen = aufloesungsGrenzen(window.devicePixelRatio, opt.aufloesung?.pixeldichteDeckel);
+    const deckel = opt.aufloesung?.pixeldichteDeckel;
+    const grenzen = aufloesungsGrenzen(window.devicePixelRatio, this.software ? Math.min(1, deckel ?? 1) : deckel);
     this.maxDichte = grenzen.max;
     this.dyn = (opt.aufloesung?.dynamisch ?? true) ? new DynamischeAufloesung(grenzen.min, grenzen.max) : null;
 
@@ -144,6 +153,13 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
     this.szene.umgebungErzeugen(this.renderer);
     this.anwenden(true);
+    // Shader vorab übersetzen (parallel, wo der Browser es kann): sonst hängen die ersten Frames mehrere Sekunden
+    // (ohne GPU gemessen 3–5 s je Hänger, Ticket 018) – besser vor „bereit“ als mitten im Spiel.
+    try {
+      await this.renderer.compileAsync(this.szene.szene, this.kamera);
+    } catch (e) {
+      console.warn(`Shader-Vorübersetzung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
+    }
     if (!this.beendet) this.renderer.setAnimationLoop(this.frame);
   }
 
@@ -382,6 +398,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
       winkel: { ...this.winkel },
       diagnose: {
         glRenderer: this.glRenderer,
+        software: this.software,
         komprimiert: [...this.komprimiert],
         assetLadeMs: this.assets?.info.ladeMs ?? null,
         assetFehler: this.assetFehler,
@@ -422,6 +439,19 @@ function glRendererName(gl: WebGLRenderingContext | WebGL2RenderingContext): str
   }
 }
 
+/** GL-Renderer-Name über einen kurzlebigen Probe-Kontext (vor dem eigentlichen Renderer, wegen MSAA). */
+function probeRenderer(): string {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return '';
+    const name = glRendererName(gl);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return name;
+  } catch {
+    return '';
+  }
+}
+
 /** true, wenn der Browser WebGL 2 anbietet (Pflicht-Renderpfad). */
 export function hatWebGL2(): boolean {
   try {
@@ -437,7 +467,7 @@ export function hatWebGL2(): boolean {
  */
 export async function erzeugeWerkstattView(canvas: HTMLCanvasElement, opt: WerkstattOptionen = {}): Promise<WerkstattViewDebug> {
   await new Promise<void>((r) => requestAnimationFrame(() => { r(); }));
-  const view = new WerkstattViewThree(canvas, opt);
+  const view = new WerkstattViewThree(canvas, { ...opt, glRenderer: opt.glRenderer ?? probeRenderer() });
   await view.starten();
   return view;
 }

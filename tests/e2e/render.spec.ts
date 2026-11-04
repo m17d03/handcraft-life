@@ -223,6 +223,26 @@ test.describe('Spielseite /spiel/', () => {
     expect(probleme.filter((p) => !/CONTEXT_LOST|context lost|loseContext/i.test(p))).toEqual([]);
   });
 
+  test('Asset-Ladefehler (Basis-Transcoder fehlt) → Platzhalter, Szene zeichnet, Hinweis im Debug-Overlay', async ({ page }) => {
+    // Ticket 018: Ein Ladefehler darf nie zu stillem Nichts führen
+    await page.route('**/basis/**', (r) => r.abort());
+    await page.goto(SPIEL);
+    if (!(await bereit(page))) {
+      test.skip(true, 'Browser ohne WebGL 2');
+      return;
+    }
+    const z = await page.evaluate(() => window.__view?.zustand());
+    expect(z?.assets, JSON.stringify(z?.diagnose)).toBe('platzhalter');
+    expect(z?.diagnose.assetFehler).toBeTruthy();
+    await expect(page.locator('#debug-overlay')).toContainText('Assets nicht geladen');
+    await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
+    const id = await page.evaluate(() => {
+      const p = window.__view?.weltNachBildschirm(1000);
+      return p ? window.__view?.pick(p.x, p.y) : null;
+    });
+    expect(id).toBe('brett');
+  });
+
   test('Hochformat zeigt „Bitte quer halten“, Querformat nicht', async ({ page }) => {
     await page.goto(SPIEL);
     const vp = page.viewportSize();

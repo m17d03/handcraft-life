@@ -4,7 +4,8 @@
  * Behobene QA-Befunde aus Ticket 005:
  * 1. Ohne gerenderten Frame fallen Draw Calls und Dreiecke auf 0 (vorher blieben alte Werte stehen):
  *    Ein Frame ohne Zeichenaufrufe meldet 0, und liegt das letzte Frame-Ende länger als
- *    max(`veraltetMs`, 3 × letzter Frame-Abstand) zurück (Schleife steht), meldet die Auswertung ebenfalls 0.
+ *    max(`veraltetMs`, 3 × längster Frame-Abstand im Fenster) zurück (Schleife steht), meldet die Auswertung
+ *    ebenfalls 0.
  * 2. `inputLatencyMsLast` wird erst NACH dem Present gestempelt: Feedback-Frame gezeichnet → beim Beginn
  *    des nächsten Frames (rAF-Zeit = Anzeige des vorigen Bildes) wird die Latenz genommen.
  */
@@ -110,8 +111,12 @@ export class FrameStatistik {
     const erster = a[0];
     const letzter = a[a.length - 1];
     const spanne = erster && letzter ? letzter.t - erster.t + erster.gap : 0;
-    // Langsame Geräte (z. B. Emulation ohne GPU) nicht fälschlich als "kein Frame" werten.
-    const grenze = Math.max(this.veraltetMs, 3 * (letzter?.gap ?? 0));
+    // Langsame Geräte (z. B. Emulation ohne GPU) nicht fälschlich als "kein Frame" werten. Massstab ist der
+    // längste Frame-Abstand im Fenster, nicht der letzte: Ohne GPU wechseln kurze und mehrere Sekunden lange
+    // Frames (Shader-Übersetzung, GPU-Prozess); sonst fiel die Anzeige mitten im laufenden Bild auf 0 (Ticket 018).
+    // Steht die Schleife wirklich, altern die Abstände aus dem Fenster und die Grenze fällt auf `veraltetMs`.
+    const laengster = sortiert[sortiert.length - 1] ?? 0;
+    const grenze = Math.max(this.veraltetMs, 3 * laengster);
     const aktuell = this.letztesEnde !== null && jetztMs - this.letztesEnde <= grenze;
     return {
       windowMs: this.fensterMs,

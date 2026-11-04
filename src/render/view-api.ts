@@ -56,6 +56,8 @@ export interface WerkstattViewZustand {
 export interface WerkstattDiagnose {
   /** GL_RENDERER / unmaskiert, z. B. „llvmpipe“ = Software-Rendering */
   glRenderer: string;
+  /** Software-Rendering erkannt → Pixeldichte 1, kein MSAA */
+  software: boolean;
   /** unterstützte komprimierte Texturformate (Erweiterungsnamen) */
   komprimiert: string[];
   assetLadeMs: number | null;
