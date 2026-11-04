@@ -5,18 +5,24 @@
 
 export const PIXELDICHTE_MAX = 2;
 
-/** URL-Schalter der Spielseite: ?dyn=0 schaltet die dynamische Auflösung ab, ?dpr=1..2 deckelt. */
+/**
+ * URL-Schalter der Spielseite: ?dyn=0 schaltet die dynamische Auflösung ab, ?dpr=0.5..2 deckelt,
+ * ?aa=0 schaltet MSAA ab (Messung/Tests auf Rechnern ohne GPU, Ticket 018).
+ */
 export interface AufloesungsParameter {
   readonly dynamisch: boolean;
   readonly pixeldichteDeckel: number;
+  /** MSAA anfordern (Standard true) */
+  readonly msaa?: boolean;
 }
 
 export function leseAufloesungsParameter(search: string): AufloesungsParameter {
   const q = new URLSearchParams(search);
   const dyn = q.get('dyn');
+  const aa = q.get('aa');
   const dprRoh = Number(q.get('dpr') ?? String(PIXELDICHTE_MAX));
   const deckel = Number.isFinite(dprRoh) && dprRoh > 0 ? Math.min(PIXELDICHTE_MAX, Math.max(0.5, dprRoh)) : PIXELDICHTE_MAX;
-  return { dynamisch: dyn === null || (dyn !== '0' && dyn !== 'false'), pixeldichteDeckel: deckel };
+  return { dynamisch: dyn === null || (dyn !== '0' && dyn !== 'false'), pixeldichteDeckel: deckel, msaa: aa !== '0' && aa !== 'false' };
 }
 
 /** Grenzen der dynamischen Auflösung für ein Gerät: max = min(dpr, Deckel), min = 60 % davon, nicht unter 1. */

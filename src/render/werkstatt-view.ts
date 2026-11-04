@@ -96,7 +96,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.perf = opt.perf ?? null;
     this.fahrt = new Kamerafahrt(opt.kamerafahrtMs ?? ARBEITSANSICHT.fahrtMs);
     this.software = istSoftwareRenderer(opt.glRenderer ?? '');
-    const r = new THREE.WebGLRenderer({ canvas, antialias: !this.software, alpha: false, stencil: false, powerPreference: 'high-performance' });
+    const r = new THREE.WebGLRenderer({ canvas, antialias: !this.software && (opt.aufloesung?.msaa ?? true), alpha: false, stencil: false, powerPreference: 'high-performance' });
     this.renderer = r;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 0.78;

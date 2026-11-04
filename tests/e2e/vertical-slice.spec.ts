@@ -17,8 +17,10 @@ declare global {
 // über den Weg erkannt, Züge über die Richtungsumkehr; gewartet wird nur per Polling auf Zustände.
 // Der Spielzustand wird über window.__spiel (nur ?debug=1) gelesen, nie gesetzt.
 
-// ?test=1: Kamerafahrten ohne Dauer, dpr=1: weniger Pixel für die Software-GPU – der Ablauf selbst bleibt Touch (QA F9)
-const SPIEL = './spiel/?debug=1&saat=7&test=1&dpr=1';
+// ?test=1: Kamerafahrten ohne Dauer, dpr=0.5 und aa=0: weniger Pixel, kein MSAA für die Software-GPU in CI
+// (WebKit ohne GPU: bei dpr=1 mit MSAA ~1,8 s je Frame, Ticket 018) – der Ablauf selbst bleibt Touch (QA F9).
+// Bildqualität und Budgets prüft render.spec.ts mit Standardeinstellungen.
+const SPIEL = './spiel/?debug=1&saat=7&test=1&dpr=0.5&aa=0';
 const LANG = { timeout: 60_000 };
 
 type Schritt = { t: 'down' | 'move' | 'up'; id: number; x: number; y: number } | { t: 'warte'; ms: number };

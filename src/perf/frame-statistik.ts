@@ -4,8 +4,8 @@
  * Behobene QA-Befunde aus Ticket 005:
  * 1. Ohne gerenderten Frame fallen Draw Calls und Dreiecke auf 0 (vorher blieben alte Werte stehen):
  *    Ein Frame ohne Zeichenaufrufe meldet 0, und liegt das letzte Frame-Ende länger als
- *    max(`veraltetMs`, 3 × längster Frame-Abstand im Fenster) zurück (Schleife steht), meldet die Auswertung
- *    ebenfalls 0.
+ *    max(`veraltetMs`, 3 × längster Frame-Abstand im Fenster bzw. letzter Abstand) zurück (Schleife steht),
+ *    meldet die Auswertung ebenfalls 0.
  * 2. `inputLatencyMsLast` wird erst NACH dem Present gestempelt: Feedback-Frame gezeichnet → beim Beginn
  *    des nächsten Frames (rAF-Zeit = Anzeige des vorigen Bildes) wird die Latenz genommen.
  */
@@ -42,6 +42,8 @@ const LANGER_FRAME_MS = 50;
 export class FrameStatistik {
   private readonly abstaende: { t: number; gap: number }[] = [];
   private letzterBeginn: number | undefined;
+  /** Letzter Frame-Abstand (bleibt auch, wenn er aus dem Fenster altert oder `reset` das Fenster leert). */
+  private letzterAbstand = 0;
   private maxGap = 0;
   private lange = 0;
   private letzterFrame: FrameZaehler = { drawCalls: 0, triangles: 0 };
@@ -64,6 +66,7 @@ export class FrameStatistik {
     }
     if (this.letzterBeginn !== undefined) {
       const gap = jetztMs - this.letzterBeginn;
+      this.letzterAbstand = gap;
       this.abstaende.push({ t: jetztMs, gap });
       if (gap > this.maxGap) this.maxGap = gap;
       if (gap > LANGER_FRAME_MS) this.lange++;
@@ -112,10 +115,10 @@ export class FrameStatistik {
     const letzter = a[a.length - 1];
     const spanne = erster && letzter ? letzter.t - erster.t + erster.gap : 0;
     // Langsame Geräte (z. B. Emulation ohne GPU) nicht fälschlich als "kein Frame" werten. Massstab ist der
-    // längste Frame-Abstand im Fenster, nicht der letzte: Ohne GPU wechseln kurze und mehrere Sekunden lange
-    // Frames (Shader-Übersetzung, GPU-Prozess); sonst fiel die Anzeige mitten im laufenden Bild auf 0 (Ticket 018).
-    // Steht die Schleife wirklich, altern die Abstände aus dem Fenster und die Grenze fällt auf `veraltetMs`.
-    const laengster = sortiert[sortiert.length - 1] ?? 0;
+    // längste Frame-Abstand im Fenster und der letzte (auch wenn er länger als das Fenster ist): Ohne GPU wechseln
+    // kurze und mehrere Sekunden lange Frames (Shader-Übersetzung, GPU-Prozess); sonst fiel die Anzeige mitten im
+    // laufenden Bild auf 0 (Ticket 018). Steht die Schleife wirklich, meldet sie nach 3 × diesem Abstand 0.
+    const laengster = Math.max(sortiert[sortiert.length - 1] ?? 0, this.letzterAbstand);
     const grenze = Math.max(this.veraltetMs, 3 * laengster);
     const aktuell = this.letztesEnde !== null && jetztMs - this.letztesEnde <= grenze;
     return {
