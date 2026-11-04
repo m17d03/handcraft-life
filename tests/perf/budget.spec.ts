@@ -35,8 +35,8 @@ declare global {
   interface Window {
     __view?: WerkstattViewDebug;
     __spiel?: SpielDebug;
-    /** Zähler der Budget-Prüfung (Init-Skript): Uploads mit echten komprimierten Bytes. */
-    __budgetGl?: { compressedTexImage2D: number };
+    /** Sammler der Budget-Prüfung (Init-Skript `budgetSammler`). */
+    __budget?: { ansicht: string; proben: number; dc: number; tri: number; texMB: number; compressedTexImage2D: number };
   }
 }
 
@@ -140,6 +140,8 @@ interface Ansicht {
   frameP95: number;
   frameMax: number;
   hinweis: string;
+  t0: number;
+  dauerMs: number;
 }
 
 const neueAnsicht = (name: string): Ansicht => ({
@@ -153,75 +155,127 @@ const neueAnsicht = (name: string): Ansicht => ({
   frameP95: 0,
   frameMax: 0,
   hinweis: '',
+  t0: 0,
+  dauerMs: 0,
 });
 
 /** Höchster Texturspeicher (Emulation) und letzter Snapshot über die ganze Runde. */
 const gesamt: { texturMBEmulation: number; letzter: PerfSnapshot | null } = { texturMBEmulation: 0, letzter: null };
 
-async function probe(page: Page, a: Ansicht): Promise<void> {
-  const s = await page.evaluate(() => window.__perf?.() ?? null);
-  if (!s) return;
-  a.proben++;
-  a.drawCallsMax = Math.max(a.drawCallsMax, s.drawCalls);
-  a.dreieckeMax = Math.max(a.dreieckeMax, s.triangles);
-  a.fps = s.fps;
-  a.frameAvg = s.frameTimeMsAvg;
-  a.frameP95 = s.frameTimeMsP95;
-  a.frameMax = s.frameTimeMsMax;
-  gesamt.texturMBEmulation = Math.max(gesamt.texturMBEmulation, s.textureMemoryMB);
-  gesamt.letzter = s;
+/**
+ * Init-Skript (läuft in der Seite): liest nach jedem Frame `__perf()` und hält das Maximum der laufenden Ansicht.
+ * Die Software-GPU blockiert den Seiten-Thread (Frames bis > 1 s) – jede Playwright-Rundreise kostet Sekunden,
+ * daher wird in der Seite gesammelt und nur am Ende einer Ansicht gelesen. Zählt ausserdem
+ * `compressedTexImage2D`-Aufrufe (echte komprimierte Bytes → ASTC-Korrektur unten wäre falsch).
+ */
+function budgetSammler(): void {
+  const b = { ansicht: '', proben: 0, dc: 0, tri: 0, texMB: 0, compressedTexImage2D: 0 };
+  window.__budget = b;
+  const tick = (): void => {
+    const s = b.ansicht ? window.__perf?.() : undefined;
+    if (s && s.frames > 0) {
+      b.proben++;
+      b.dc = Math.max(b.dc, s.drawCalls);
+      b.tri = Math.max(b.tri, s.triangles);
+      b.texMB = Math.max(b.texMB, s.textureMemoryMB);
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  for (const proto of [WebGL2RenderingContext.prototype, WebGLRenderingContext.prototype] as object[]) {
+    const desc = Object.getOwnPropertyDescriptor(proto, 'compressedTexImage2D');
+    const orig: unknown = desc?.value;
+    if (typeof orig !== 'function') continue;
+    const fn = orig as (...a: unknown[]) => unknown;
+    Object.defineProperty(proto, 'compressedTexImage2D', {
+      ...desc,
+      value: function (this: unknown, ...a: unknown[]): unknown {
+        b.compressedTexImage2D++;
+        return fn.apply(this, a);
+      },
+    });
+  }
 }
 
 async function beginne(page: Page, a: Ansicht): Promise<void> {
   a.erreicht = true;
-  await page.evaluate(() => { window.__perfReset?.(); });
+  a.t0 = Date.now();
+  await page.evaluate((name) => {
+    window.__perfReset?.();
+    const b = window.__budget;
+    if (!b) return;
+    b.ansicht = name;
+    b.proben = 0;
+    b.dc = 0;
+    b.tri = 0;
+  }, a.name);
 }
 
-async function messeFuer(page: Page, a: Ansicht, ms: number): Promise<void> {
-  const ende = Date.now() + ms;
-  do {
-    await page.waitForTimeout(250);
-    await probe(page, a);
-  } while (Date.now() < ende);
-}
-
-/** Misst alle 250 ms, solange `arbeit` läuft (Eingaben und Messung wechseln sich im Seiten-Thread ab). */
-async function messeWaehrend(page: Page, a: Ansicht, arbeit: Promise<void>): Promise<void> {
-  const lauf = { fertig: false };
-  const p = arbeit.finally(() => { lauf.fertig = true; });
-  while (!lauf.fertig) {
-    await page.waitForTimeout(250);
-    await probe(page, a);
+async function beende(page: Page, a: Ansicht): Promise<void> {
+  const r = await page.evaluate(() => {
+    const b = window.__budget;
+    const s = window.__perf?.() ?? null;
+    const kopie = b ? { ...b } : null;
+    if (b) b.ansicht = '';
+    return { b: kopie, s };
+  });
+  a.dauerMs = Date.now() - a.t0;
+  if (r.b) {
+    a.proben = r.b.proben;
+    a.drawCallsMax = r.b.dc;
+    a.dreieckeMax = r.b.tri;
+    gesamt.texturMBEmulation = Math.max(gesamt.texturMBEmulation, r.b.texMB);
   }
-  await p;
-  await probe(page, a);
+  if (r.s) {
+    a.fps = r.s.fps;
+    a.frameAvg = r.s.frameTimeMsAvg;
+    a.frameP95 = r.s.frameTimeMsP95;
+    a.frameMax = r.s.frameTimeMsMax;
+    gesamt.texturMBEmulation = Math.max(gesamt.texturMBEmulation, r.s.textureMemoryMB);
+    gesamt.letzter = r.s;
+  }
 }
 
-/** Ein Finger auf der rechten Bildhälfte (Umsehen); Ziel bleibt das Element unter dem Aufsetzpunkt. */
-async function umsehenFinger(page: Page, t: 'down' | 'move' | 'up', x: number, y: number): Promise<void> {
-  await page.evaluate(([t, x, y]) => {
-    const w = window as Window & { __budgetZiel?: Element };
-    if (t === 'down') w.__budgetZiel = document.elementFromPoint(x, y) ?? document.body;
-    (w.__budgetZiel ?? document.body).dispatchEvent(
-      new PointerEvent(`pointer${t}`, { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true, cancelable: true }),
-    );
-  }, [t, x, y] as const);
-}
-
-const yaw = (page: Page): Promise<number> => page.evaluate(() => window.__view?.zustand().kamera.yaw ?? 0);
-
-/** Ein Wisch über 180 px in 6 Schritten, nach jedem Schritt eine Probe. */
-async function umsehenWisch(page: Page, a: Ansicht, richtung: 1 | -1): Promise<void> {
+/**
+ * Rundum umsehen (rechte Bildhälfte, Wische à 180 px) bis ≥ 360° Gierwinkel, dann genauso viele Wische zurück –
+ * der Blick steht danach wieder auf der Werkbank. Alles in einer Rundreise; liefert die Drehung in Grad.
+ */
+async function rundumUmsehen(page: Page): Promise<number> {
   const v = page.viewportSize() ?? { width: 852, height: 393 };
-  const y = v.height * 0.45;
-  const x0 = richtung === 1 ? v.width * 0.58 : v.width * 0.58 + 180;
-  await umsehenFinger(page, 'down', x0, y);
-  for (let i = 1; i <= 6; i++) {
-    await umsehenFinger(page, 'move', x0 + richtung * 30 * i, y);
-    await page.waitForTimeout(150);
-    await probe(page, a);
-  }
-  await umsehenFinger(page, 'up', x0 + richtung * 180, y);
+  return page.evaluate(async ({ w, h }) => {
+    const frame = (): Promise<void> => new Promise((r) => { requestAnimationFrame(() => { r(); }); });
+    const yaw = (): number => window.__view?.zustand().kamera.yaw ?? 0;
+    const y = h * 0.45;
+    const x0 = w * 0.58;
+    let ziel: Element = document.body;
+    const sende = (t: 'down' | 'move' | 'up', x: number): void => {
+      if (t === 'down') ziel = document.elementFromPoint(x, y) ?? document.body;
+      ziel.dispatchEvent(new PointerEvent(`pointer${t}`, { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    };
+    const wisch = async (richtung: 1 | -1): Promise<void> => {
+      const start = richtung === 1 ? x0 : x0 + 180;
+      sende('down', start);
+      for (let i = 1; i <= 6; i++) {
+        sende('move', start + richtung * 30 * i);
+        await frame();
+      }
+      sende('up', start + richtung * 180);
+      await frame();
+    };
+    let gedreht = 0;
+    let vorher = yaw();
+    let n = 0;
+    while (gedreht < 2 * Math.PI && n < 24) {
+      await wisch(1);
+      const jetzt = yaw();
+      gedreht += Math.abs(Math.atan2(Math.sin(jetzt - vorher), Math.cos(jetzt - vorher)));
+      vorher = jetzt;
+      n++;
+      if (n === 2 && gedreht < 1e-3) break; // Umsehen wirkt nicht – nicht endlos wischen
+    }
+    for (let i = 0; i < n; i++) await wisch(-1);
+    return (gedreht * 180) / Math.PI;
+  }, { w: v.width, h: v.height });
 }
 
 // ------------------------------------------------------------------ Download und Texturen (aus den Antworten)
@@ -291,11 +345,7 @@ async function bisZumSaegen(page: Page): Promise<void> {
     return a && b ? (b.x - a.x) / 100 : 0;
   });
   await zeiger(page, ziehe(1, griff, { x: griff.x + soll * pxProMm, y: griff.y }, 12));
-  let mass = (await ui(page))?.massMm ?? 0;
-  for (let i = 0; i < 60 && mass !== soll; i++) {
-    await page.locator(mass < soll ? '.hud-fein[data-fein="0.5"]' : '.hud-fein[data-fein="-0.5"]').tap();
-    mass = (await ui(page))?.massMm ?? 0;
-  }
+  // Genau 600 mm ist für die Messung unnötig (kostet in WebKit ohne GPU Minuten) – angerissen wird, wo der Griff steht.
   await page.locator('.hud-anreissen').tap();
   await expect.poll(() => phase(page), LANG).toBe('ansetzen');
   await page.getByRole('button', { name: 'Sägen ›' }).tap();
@@ -304,7 +354,11 @@ async function bisZumSaegen(page: Page): Promise<void> {
 
 // ------------------------------------------------------------------ Bericht
 
-const f = (n: number, d = 0): string => n.toLocaleString('de-CH', { minimumFractionDigits: d, maximumFractionDigits: d });
+/** Zahl im Format der Projektberichte: Tausender mit Leerzeichen, Dezimalkomma. */
+const f = (n: number, d = 0): string => {
+  const [ganz = '', teil] = n.toFixed(d).split('.');
+  return `${ganz.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}${teil ? `,${teil}` : ''}`;
+};
 
 type Status = 'ok' | 'warnung' | 'grenze' | 'messfehler';
 const STATUS_TEXT: Record<Status, string> = {
@@ -351,24 +405,7 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen, Ergebnis)', asyn
   });
   const seitenFehler: string[] = [];
   page.on('pageerror', (e) => seitenFehler.push(e.message));
-  // Uploads mit echten komprimierten Bytes zählen (dann wäre die ASTC-Korrektur unten falsch)
-  await page.addInitScript(() => {
-    const z = { compressedTexImage2D: 0 };
-    window.__budgetGl = z;
-    for (const proto of [WebGL2RenderingContext.prototype, WebGLRenderingContext.prototype] as object[]) {
-      const desc = Object.getOwnPropertyDescriptor(proto, 'compressedTexImage2D');
-      const orig: unknown = desc?.value;
-      if (typeof orig !== 'function') continue;
-      const fn = orig as (...a: unknown[]) => unknown;
-      Object.defineProperty(proto, 'compressedTexImage2D', {
-        ...desc,
-        value: function (this: unknown, ...a: unknown[]): unknown {
-          z.compressedTexImage2D++;
-          return fn.apply(this, a);
-        },
-      });
-    }
-  });
+  await page.addInitScript(budgetSammler);
 
   let abbruch: string | null = null;
   let assets = '?';
@@ -387,35 +424,32 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen, Ergebnis)', asyn
 
     // 1) Erkunden: stehen, dann einmal rundum umsehen und genauso weit zurück (Blick wieder auf die Werkbank)
     await beginne(page, erkunden);
-    await messeFuer(page, erkunden, 2000);
-    const yaw0 = await yaw(page);
-    await umsehenWisch(page, erkunden, 1);
-    const jeWisch = Math.abs((await yaw(page)) - yaw0);
-    const wische = jeWisch > 1e-3 ? Math.min(12, Math.ceil((2 * Math.PI) / jeWisch)) : 1;
-    for (let i = 1; i < wische; i++) await umsehenWisch(page, erkunden, 1);
-    for (let i = 0; i < wische; i++) await umsehenWisch(page, erkunden, -1);
-    erkunden.hinweis = jeWisch > 1e-3 ? `umgesehen ≈ ${f(Math.min(360, (wische * jeWisch * 180) / Math.PI))}°` : 'Umsehen ohne Wirkung';
+    await page.waitForTimeout(2000);
+    const grad = await rundumUmsehen(page);
+    await beende(page, erkunden);
+    erkunden.hinweis = grad > 0.1 ? `umgesehen ${f(grad)}° und zurück` : 'Umsehen ohne Wirkung';
 
     // 2) Werkbank bis zum Sägen, dann sägen (Messung während der Züge)
     await zurWerkbank(page);
     await bisZumSaegen(page);
     await beginne(page, saegenA);
-    for (let runde = 0; runde < 6; runde++) {
-      await messeWaehrend(page, saegenA, saegen(page, 2));
+    for (let runde = 0; runde < 8; runde++) {
+      await saegen(page, 2);
       if ((await phase(page)) === 'ergebnis') break;
       if (Date.now() - start > ZEIT_ERGEBNIS_MS) {
         ergebnisA.hinweis = 'nicht erreicht (Zeitgrenze der Messrunde)';
         break;
       }
     }
-    saegenA.hinweis = `${String((await zustand(page))?.arbeit?.zuege.length ?? 0)} Züge`;
+    await beende(page, saegenA);
 
     // 3) Ergebnis
     if ((await phase(page)) === 'ergebnis') {
       await beginne(page, ergebnisA);
-      await messeFuer(page, ergebnisA, 2000);
+      await page.waitForTimeout(2000);
+      await beende(page, ergebnisA);
     } else if (!ergebnisA.hinweis) ergebnisA.hinweis = 'nicht erreicht';
-    compressedUploads = (await page.evaluate(() => window.__budgetGl?.compressedTexImage2D)) ?? 0;
+    compressedUploads = (await page.evaluate(() => window.__budget?.compressedTexImage2D)) ?? 0;
   } catch (e) {
     abbruch = e instanceof Error ? e.message.split('\n')[0] ?? e.message : String(e);
   }
@@ -466,7 +500,7 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen, Ergebnis)', asyn
     tex: texEmu === 0 ? 'messfehler' : bewerte(texIphone, BUDGET.texturMB),
     dl: download.length === 0 ? 'messfehler' : bewerte(downloadMB, BUDGET.downloadMB),
   } satisfies Record<string, Status>;
-  const jeAnsicht = (w: (a: Ansicht) => string): string => ansichten.map((a) => (a.erreicht && a.proben > 0 ? w(a) : '–')).join(' / ');
+  const jeAnsicht = (w: (a: Ansicht) => string, trenner = ' / '): string => ansichten.map((a) => (a.erreicht && a.proben > 0 ? w(a) : '–')).join(trenner);
   const s = gesamt.letzter;
   const browserVersion = page.context().browser()?.version() ?? '?';
   const gesamtStatus = messfehler.length > 0 ? 'MESSFEHLER' : Object.values(st).includes('grenze') ? 'GRENZE ÜBERSCHRITTEN' : Object.values(st).includes('warnung') ? 'eingehalten, mit Warnung' : 'eingehalten';
@@ -485,12 +519,12 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen, Ergebnis)', asyn
     `| Download bis spielbar (Text gzip, Binär roh) | ${f(downloadMB, 2)} MB (${String(download.length)} Dateien) | < 15 MB | ≤ 25 MB | ${STATUS_TEXT[st.dl]} |`,
     `| GPU-Texturspeicher iPhone (ASTC-Schätzung) | ${f(texIphone, 1)} MB | < 120 MB | ≤ 200 MB | ${STATUS_TEXT[st.tex]} |`,
     `| GPU-Texturspeicher Emulation (unkomprimiert, obere Schranke) | ${f(texEmu, 1)} MB | – | – | Bericht${texEmu > BUDGET.texturMB.grenze ? ' (⚠ > 200 MB)' : ''} |`,
-    `| Frame-Zeit Ø / p95 / max ms (je Ansicht) | ${jeAnsicht((a) => `${f(a.frameAvg, 1)} / ${f(a.frameP95, 1)} / ${f(a.frameMax)}`)} | (Gerät) ≤ 33,3 p95 | (Gerät) ≤ 40 p95 | Bericht (Emulation) |`,
+    `| Frame-Zeit Ø / p95 / max ms (je Ansicht) | ${jeAnsicht((a) => `${f(a.frameAvg, 1)} / ${f(a.frameP95, 1)} / ${f(a.frameMax)}`, ' · ')} | (Gerät) ≤ 33,3 p95 | (Gerät) ≤ 40 p95 | Bericht (Emulation) |`,
     `| fps Emulation (je Ansicht) | ${jeAnsicht((a) => f(a.fps, 1))} | (Gerät) ≥ 30 | (Gerät) ≥ 25 | Bericht (Emulation) |`,
     `| Zeit bis spielbar (Emulation) | ${s?.timeToPlayableMs == null ? '–' : `${f(s.timeToPlayableMs)} ms`} | – | – | Bericht |`,
     `| Übertragen laut __perf (vite preview, ungzipped) | ${s?.transferredKB == null ? '–' : `${f(s.transferredKB / 1024, 2)} MB`} (roh ${f(downloadRohMB, 2)} MB) | – | – | Gegenprobe |`,
     '',
-    `Hinweise: ${ansichten.map((a) => `${a.name}: ${a.erreicht ? `${String(a.proben)} Proben` : 'nicht gemessen'}${a.hinweis ? `, ${a.hinweis}` : ''}`).join(' · ')}`,
+    `Hinweise: ${ansichten.map((a) => `${a.name}: ${a.erreicht ? `${String(a.proben)} Proben in ${f(a.dauerMs / 1000)} s` : 'nicht gemessen'}${a.hinweis ? `, ${a.hinweis}` : ''}`).join(' · ')}`,
     '',
     `Texturen: ${texHinweis}. Komprimierte Formate im Browser: ${komprimierteFormate.length > 0 ? komprimierteFormate.join(', ') : 'keine'}.`,
     `Seitenfehler: ${seitenFehler.length > 0 ? seitenFehler.slice(0, 5).join(' | ') : 'keine'}. Kontextverluste: ${String(s?.contextLostCount ?? '–')}.`,
