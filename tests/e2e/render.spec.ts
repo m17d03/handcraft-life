@@ -235,6 +235,9 @@ test.describe('Spielseite /spiel/', () => {
     expect(z?.assets, JSON.stringify(z?.diagnose)).toBe('platzhalter');
     expect(z?.diagnose.assetFehler).toBeTruthy();
     await expect(page.locator('#debug-overlay')).toContainText('Assets nicht geladen');
+    // Spieler-Hinweis (auch ohne Debug sichtbar), bleibt nach „bereit“ stehen
+    await expect(page.locator('#spiel-status')).toBeVisible();
+    await expect(page.locator('#spiel-status')).toContainText('vereinfachte Darstellung');
     await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
     const id = await page.evaluate(() => {
       const p = window.__view?.weltNachBildschirm(1000);
