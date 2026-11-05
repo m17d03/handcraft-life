@@ -90,7 +90,44 @@ export function endpruefungZeigen(wurzel: HTMLElement, d: EndpruefungDaten, a: E
   // Berührungen auf dem Panel gehen nicht an die Spielfläche darunter
   for (const t of ['pointerdown', 'pointermove', 'pointerup']) el.addEventListener(t, (e) => { e.stopPropagation(); });
   wurzel.append(el);
+  endpruefungEinpassen(wurzel);
   return el;
+}
+
+/** Stufen der Nahansicht, von voll bis knapp (Ticket 016, QA N1/N4). */
+const STUFEN = ['', 'kompakt', 'knapp'] as const;
+/** Elemente oben, unter denen die Nahansicht bleiben muss (Kopfzeile und Hinweisbalken). */
+const OBEN = '.hud-hinweis, .hud-schritte, .hud-auftrag, .hud-zurueck, .hud-geld';
+const ABSTAND = 8;
+
+/**
+ * Passt die Nahansicht in den Platz unter Kopfzeile und Hinweis ein: Tasten in einer Zeile, Kopfzeile der
+ * Tafel nie verdeckt. Wählt die grösste Stufe, die passt. Aufrufen nach Hinweis-Wechsel und Grössenänderung.
+ */
+export function endpruefungEinpassen(wurzel: HTMLElement): void {
+  const el = wurzel.querySelector<HTMLElement>('.hud-endpruefung');
+  if (!el) return;
+  const oben = [...wurzel.querySelectorAll<HTMLElement>(OBEN)];
+  for (const stufe of STUFEN) {
+    el.classList.remove('kompakt', 'knapp');
+    if (stufe === 'knapp') el.classList.add('kompakt', 'knapp');
+    else if (stufe === 'kompakt') el.classList.add('kompakt');
+    el.dataset['stufe'] = stufe || 'voll';
+    if (passt(el, oben)) return;
+  }
+}
+
+function passt(el: HTMLElement, oben: HTMLElement[]): boolean {
+  const r = el.getBoundingClientRect();
+  for (const o of oben) {
+    const b = o.getBoundingClientRect();
+    if (b.width === 0 || b.height === 0) continue; // ausgeblendet
+    const ueberlapptWaagrecht = b.left < r.right && b.right > r.left;
+    if (ueberlapptWaagrecht && r.top < b.bottom + ABSTAND) return false;
+  }
+  // Alle Tasten in einer Zeile (sonst wächst die Tafel in die Höhe)
+  const tasten = [...el.querySelectorAll('button')].map((b) => b.getBoundingClientRect().top);
+  return tasten.every((t) => Math.abs(t - (tasten[0] ?? t)) < 1);
 }
 
 export function endpruefungSchliessen(wurzel: HTMLElement): void {

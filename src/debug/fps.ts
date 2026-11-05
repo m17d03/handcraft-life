@@ -19,6 +19,12 @@ export class FpsMeter {
     }
   }
 
+  /** Messung verwerfen (z. B. nach einer Pause, damit sie nicht als Ruckler zählt). */
+  reset(): void {
+    this.frames.length = 0;
+    this.last = undefined;
+  }
+
   /** Frames pro Sekunde im Fenster; 0 solange weniger als zwei Frames vorliegen. */
   get fps(): number {
     const first = this.frames[0];
