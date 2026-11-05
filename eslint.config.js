@@ -10,7 +10,7 @@ const browserNurGlobals = [
 ].filter((g, i, a) => a.indexOf(g) === i);
 
 export default tseslint.config(
-  { ignores: ['.claude/', 'dist/', 'node_modules/', 'test-results/', 'playwright-report/', 'public/konzepte/'] },
+  { ignores: ['.claude/', '.venv-blender/', 'dist/', 'node_modules/', 'test-results/', 'playwright-report/', 'public/konzepte/'] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {
