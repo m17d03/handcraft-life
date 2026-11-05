@@ -112,7 +112,7 @@ describe('Holztextur', () => {
 
 describe('Auflösung', () => {
   it('Pixeldichte höchstens 2, auch auf 3×-Displays', () => {
-    expect(aufloesungsGrenzen(3)).toEqual({ min: 1.2, max: 2 });
+    expect(aufloesungsGrenzen(3)).toEqual({ min: 1.5, max: 2 }); // G3: auf Geräten nie unter 1,5 (Ticket 018)
     expect(aufloesungsGrenzen(1).max).toBe(1);
     expect(leseAufloesungsParameter('?dpr=3').pixeldichteDeckel).toBe(2);
     expect(leseAufloesungsParameter('').dynamisch).toBe(true);

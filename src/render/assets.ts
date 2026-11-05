@@ -40,8 +40,11 @@ export interface AssetInfo {
   readonly texturFormat: string;
 }
 
-/** Ohne Antwort nach dieser Zeit gilt das Laden als gescheitert (Platzhalter statt stillem Warten). */
-export const ASSET_FRIST_MS = 60_000;
+/**
+ * Nach dieser Zeit startet die Werkstatt mit Platzhaltern (statt still zu warten); geladen wird weiter, die
+ * Modelle werden eingebaut, sobald sie da sind. 20 s: auf dem Ziel-iPhone im WLAN dauert das Laden < 2 s.
+ */
+export const ASSET_FRIST_MS = 20_000;
 
 /** Verwirft `p` mit einem Fehler, wenn es nicht innerhalb von `ms` fertig ist. */
 export function mitFrist<T>(p: Promise<T>, ms: number, was: string): Promise<T> {
@@ -66,13 +69,13 @@ export const KACHEL_M: Readonly<Record<KachelName, number>> = {
  * Lädt alle Modelle und Kacheltexturen. `basisUrl` = ausgelieferter Wurzelpfad (Vite `BASE_URL`).
  * Wirft bei Netz- oder Formatfehlern; der Aufrufer fällt dann auf die Platzhalter zurück.
  */
-export async function ladeWerkstattAssets(renderer: THREE.WebGLRenderer, basisUrl: string, fristMs = ASSET_FRIST_MS): Promise<WerkstattAssets> {
+export async function ladeWerkstattAssets(renderer: THREE.WebGLRenderer, basisUrl: string): Promise<WerkstattAssets> {
   const start = performance.now();
   const basis = basisUrl.endsWith('/') ? basisUrl : `${basisUrl}/`;
   const ktx2 = new KTX2Loader().setTranscoderPath(`${basis}basis/`).detectSupport(renderer);
   const formate = { ...((ktx2 as unknown as { workerConfig: Record<string, boolean> | null }).workerConfig ?? {}) };
   try {
-    return await mitFrist(ladeAlles(ktx2, basis, formate, start), fristMs, 'Assets laden');
+    return await ladeAlles(ktx2, basis, formate, start);
   } finally {
     // Der Transcoder wird nur zum Laden gebraucht (Worker beenden); Texturdaten bleiben in den Vorlagen.
     ktx2.dispose();

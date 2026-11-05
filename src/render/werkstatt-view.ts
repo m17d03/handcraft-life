@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import type { PerfMelder } from '../perf/perf-snapshot';
-import { ladeWerkstattAssets, type WerkstattAssets } from './assets';
+import { ASSET_FRIST_MS, ladeWerkstattAssets, mitFrist, type WerkstattAssets } from './assets';
 import { aufloesungsGrenzen, DynamischeAufloesung, istSoftwareRenderer, type AufloesungsParameter } from './aufloesung';
 import { bildschirmNachBrettMm, brettMmNachBildschirm, type BrettLage } from './brett-koordinaten';
 import { erzeugeHolzTexturen, type HolzTexturen } from './holztextur';
@@ -33,8 +33,15 @@ export interface WerkstattOptionen {
   readonly assetBasis?: string;
   /** Dauer der Kamerafahrt (ms); Standard ARBEITSANSICHT.fahrtMs. Tests (`?test=1`) setzen 0. */
   readonly kamerafahrtMs?: number;
-  /** Ladefehler der Assets (Szene läuft mit Platzhaltern weiter). */
+  /**
+   * Ladefehler der Assets oder Frist überschritten (Szene läuft mit Platzhaltern weiter). Bei überschrittener
+   * Frist wird im Hintergrund weitergeladen; kommen die Modelle doch noch, folgt `beiAssetsNachgeladen`.
+   */
   readonly beiAssetFehler?: (fehler: unknown) => void;
+  /** Modelle sind nach überschrittener Frist doch noch angekommen und eingebaut (Hinweis wieder ausblenden). */
+  readonly beiAssetsNachgeladen?: () => void;
+  /** Frist bis zur Platzhalter-Szene (ms), Standard ASSET_FRIST_MS. */
+  readonly assetFristMs?: number;
   /**
    * GL-Renderer-Name des Geräts (vor dem Erzeugen ermittelt). Software-Rendering → Pixeldichte 1, kein MSAA.
    * Ohne Angabe ermittelt `erzeugeWerkstattView` ihn selbst.
@@ -80,6 +87,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
   private verloren = false;
   private feedbackOffen = false;
   private beendet = false;
+  /** false, solange nach Aufbau/Wiederherstellung die Shader übersetzt werden (dann wird nicht gezeichnet) */
+  private shaderBereit = true;
   private assetFehler: string | null = null;
   private readonly frameAbstaende: number[] = [];
   private readonly renderDauern: number[] = [];
@@ -119,6 +128,9 @@ class WerkstattViewThree implements WerkstattViewDebug {
 
     canvas.addEventListener('webglcontextlost', this.beiVerlust);
     canvas.addEventListener('webglcontextrestored', this.beiWiederherstellung);
+    document.addEventListener('visibilitychange', this.beiSichtwechsel);
+    window.addEventListener('pagehide', this.beiSichtwechsel);
+    window.addEventListener('pageshow', this.beiSichtwechsel);
     window.addEventListener('resize', this.groesseAnpassen);
     this.beobachter = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(this.groesseAnpassen);
     this.beobachter?.observe(canvas);
@@ -141,13 +153,17 @@ class WerkstattViewThree implements WerkstattViewDebug {
   /** Lädt die Assets (falls `assetBasis` gesetzt), baut die Szene darauf auf und startet die Schleife. */
   async starten(): Promise<void> {
     if (this.opt.assetBasis !== undefined) {
+      const laden = ladeWerkstattAssets(this.renderer, this.opt.assetBasis);
       try {
-        this.assets = await ladeWerkstattAssets(this.renderer, this.opt.assetBasis);
+        this.assets = await mitFrist(laden, this.opt.assetFristMs ?? ASSET_FRIST_MS, 'Modelle laden');
       } catch (e) {
         this.assets = null;
         this.assetFehler = e instanceof Error ? e.message : String(e);
         console.warn(`Werkstatt-Assets nicht geladen, Platzhalter aktiv: ${this.assetFehler}`);
         this.opt.beiAssetFehler?.(e);
+        // Langsames Netz: weiterladen und die Modelle einbauen, sobald sie da sind (echte Fehler enden hier still,
+        // sie sind oben schon gemeldet)
+        laden.then(this.assetsNachladen, () => undefined);
       }
     }
     this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
@@ -155,12 +171,48 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.anwenden(true);
     // Shader vorab übersetzen (parallel, wo der Browser es kann): sonst hängen die ersten Frames mehrere Sekunden
     // (ohne GPU gemessen 3–5 s je Hänger, Ticket 018) – besser vor „bereit“ als mitten im Spiel.
+    await this.shaderUebersetzen();
+    if (!this.beendet) this.renderer.setAnimationLoop(this.frame);
+  }
+
+  /** Shader der aktuellen Szene übersetzen; bis dahin zeichnet die Schleife nicht (keine Hänger mitten im Spiel). */
+  private async shaderUebersetzen(): Promise<void> {
+    const szene = this.szene;
+    this.shaderBereit = false;
     try {
-      await this.renderer.compileAsync(this.szene.szene, this.kamera);
+      await this.renderer.compileAsync(szene.szene, this.kamera);
     } catch (e) {
       console.warn(`Shader-Vorübersetzung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
     }
-    if (!this.beendet) this.renderer.setAnimationLoop(this.frame);
+    // Nur freigeben, wenn inzwischen nicht schon eine neuere Szene übersetzt wird
+    if (szene === this.szene) {
+      this.shaderBereit = true;
+      this.dyn?.pause();
+    }
+  }
+
+  /** Modelle kamen nach der Frist doch noch: Szene im selben Kontext neu aufbauen. */
+  private readonly assetsNachladen = (assets: WerkstattAssets): void => {
+    if (this.beendet) return;
+    this.assets = assets;
+    this.assetFehler = null;
+    this.holz = null;
+    if (!this.verloren) this.szeneNeuAufbauen(true);
+    this.opt.beiAssetsNachgeladen?.();
+  };
+
+  /**
+   * Szene aus dem gespeicherten Zustand neu aufbauen. `alteEntsorgen` nur im selben Kontext: Nach einem
+   * Kontextverlust tragen die alten Objekte Dispose-Hörer der alten Renderer-Module (dispose() würde fremde
+   * GL-Objekte löschen → Warnungen), dort wird die alte Szene nur verworfen.
+   */
+  private szeneNeuAufbauen(alteEntsorgen: boolean): void {
+    const alt = this.szene as WerkstattSzene | undefined;
+    this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
+    this.szene.umgebungErzeugen(this.renderer);
+    this.anwenden(true);
+    if (alteEntsorgen) alt?.dispose();
+    void this.shaderUebersetzen();
   }
 
   // ------------------------------------------------------------------ Schleife
@@ -202,7 +254,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     if (this.dyn?.messe(dt)) this.groesseAnpassen();
 
     let gezeichnet = false;
-    if (!this.verloren && !this.renderer.getContext().isContextLost()) {
+    if (this.shaderBereit && !this.verloren && !this.renderer.getContext().isContextLost()) {
       const t0 = performance.now();
       this.renderer.render(this.szene.szene, this.kamera);
       merke(this.renderDauern, performance.now() - t0);
@@ -239,16 +291,19 @@ class WerkstattViewThree implements WerkstattViewDebug {
 
   private readonly beiVerlust = (): void => {
     this.verloren = true;
+    this.dyn?.pause();
   };
 
   private readonly beiWiederherstellung = (): void => {
     this.verloren = false;
-    // Alle GPU-Objekte des alten Kontexts sind weg. Die alten Three-Objekte tragen noch Dispose-Hörer der
-    // alten Renderer-Module (dispose() würde fremde GL-Objekte löschen → Warnungen). Darum die Szene
-    // ohne dispose verwerfen und aus dem gespeicherten Zustand neu aufbauen (Holztextur wird wiederverwendet).
-    this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
-    this.szene.umgebungErzeugen(this.renderer);
-    this.anwenden(true);
+    // Alle GPU-Objekte des alten Kontexts sind weg: Szene ohne dispose verwerfen, neu aufbauen, Shader vorab
+    // übersetzen (Holztextur bzw. Modell-Vorlagen werden wiederverwendet).
+    this.szeneNeuAufbauen(false);
+  };
+
+  /** Hintergrund/App-Wechsel: Die Lücke bis zum nächsten Frame ist keine Frame-Zeit. */
+  private readonly beiSichtwechsel = (): void => {
+    this.dyn?.pause();
   };
 
   /**
@@ -372,6 +427,9 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.renderer.setAnimationLoop(null);
     this.canvas.removeEventListener('webglcontextlost', this.beiVerlust);
     this.canvas.removeEventListener('webglcontextrestored', this.beiWiederherstellung);
+    document.removeEventListener('visibilitychange', this.beiSichtwechsel);
+    window.removeEventListener('pagehide', this.beiSichtwechsel);
+    window.removeEventListener('pageshow', this.beiSichtwechsel);
     window.removeEventListener('resize', this.groesseAnpassen);
     this.beobachter?.disconnect();
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose() vor dem Ende von starten()

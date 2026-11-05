@@ -42,7 +42,7 @@ const LANGER_FRAME_MS = 50;
 export class FrameStatistik {
   private readonly abstaende: { t: number; gap: number }[] = [];
   private letzterBeginn: number | undefined;
-  /** Letzter Frame-Abstand (bleibt auch, wenn er aus dem Fenster altert oder `reset` das Fenster leert). */
+  /** Letzter Frame-Abstand (bleibt, wenn er aus dem Fenster altert; `reset` setzt ihn zurück). */
   private letzterAbstand = 0;
   private maxGap = 0;
   private lange = 0;
@@ -97,6 +97,7 @@ export class FrameStatistik {
   /** Leert Fenster, Maximum und lange Frames (`__perfReset`). */
   reset(): void {
     this.abstaende.length = 0;
+    this.letzterAbstand = 0;
     this.maxGap = 0;
     this.lange = 0;
   }
