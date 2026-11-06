@@ -431,6 +431,45 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     expect((await zustand(page))?.arbeit?.phase).toBe('messen');
   });
 
+  for (const g of [
+    { width: 667, height: 375, notch: false },
+    { width: 734, height: 343, notch: true },
+    { width: 852, height: 393, notch: true },
+    { width: 932, height: 430, notch: true },
+  ]) {
+    test(`Ticket 017 Rahmung: beide Brettenden ausserhalb Randzone + Safe Area (${String(g.width)}×${String(g.height)}${g.notch ? ' Notch' : ''})`, async ({ page }) => {
+      test.skip(hochkant(page), 'Querformat (ADR 0004); läuft einmal im Querformat-Projekt');
+      await page.setViewportSize({ width: g.width, height: g.height });
+      await page.goto(`${SPIEL}${g.notch ? '&notch=1' : ''}`);
+      if (!(await bereit(page))) {
+        test.skip(true, 'Browser ohne WebGL 2');
+        return;
+      }
+      await zurWerkbank(page);
+      const r = await page.evaluate(() => {
+        const z = window.__spiel?.zustand();
+        const ws = z?.inventar.werkstuecke.find((w) => w.id === z.arbeit?.werkstueckId);
+        const L = ws?.masse_mm.l ?? 2000;
+        return { a: window.__view?.weltNachBildschirm(0) ?? null, b: window.__view?.weltNachBildschirm(L) ?? null, breite: window.innerWidth };
+      });
+      const sperre = (g.notch ? 59 : 0) + 20;
+      for (const p of [r.a, r.b]) {
+        expect(p).not.toBeNull();
+        expect(p?.x ?? -1).toBeGreaterThan(sperre + 8);
+        expect(p?.x ?? 1e9).toBeLessThan(r.breite - sperre - 8);
+      }
+      // Ende b tatsächlich antippbar: 30 mm vor dem Ende öffnet die Endprüfung
+      const tipp = await page.evaluate(() => {
+        const z = window.__spiel?.zustand();
+        const ws = z?.inventar.werkstuecke.find((w) => w.id === z.arbeit?.werkstueckId);
+        return window.__view?.weltNachBildschirm((ws?.masse_mm.l ?? 2000) - 30) ?? null;
+      });
+      if (!tipp) throw new Error('Ende b nicht im Bild');
+      await tippen(page, tipp);
+      await expect(page.getByRole('dialog', { name: 'Brettende prüfen' })).toBeVisible();
+    });
+  }
+
   test('Ticket 017 N3: Anschlagwinkel zeigt das schiefe Ende in der Bezugsende-Phase (Lichtspalt)', async ({ page }) => {
     test.skip(hochkant(page), 'Querformat-Ablauf');
     await page.goto('./spiel/?debug=1&saat=7&test=1&dpr=1&aa=0');
