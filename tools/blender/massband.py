@@ -207,6 +207,7 @@ def main():
     k.update(hcl.backe([geh, hak], (1024, 1024), ('normal',), hochpoly=hp, kaefig_mm=1.2))
     bpy.data.objects.remove(hp)
     karten = hcl.karten(k, ao_min=0.25)
+    karten['normal'] = hcl.halbiere(karten['normal'], normal=True)  # 512²: Download/VRAM (QA 019)
 
     bd = band()
     wurzel = hcl.leer('Massband')

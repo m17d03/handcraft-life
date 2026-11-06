@@ -81,6 +81,7 @@ async function baue(modell) {
     const praefix = def.texturName ?? m.getName();
     m.setBaseColorFactor(def.faktor ?? [1, 1, 1, 1]).setRoughnessFactor(def.rauheit ?? 1).setMetallicFactor(def.metall ?? 1);
     m.setEmissiveFactor([0, 0, 0]);
+    m.setDoubleSided(def.doppelseitig ?? false); // alle Körper geschlossen → Rückseiten verwerfen (QA 019)
     const geteilt = (art) => {
       // gleiche Karten mehrerer Materialien (Werkbank: Platte + Gestell) nur einmal ablegen
       const n = `${praefix}_${art}`;
@@ -116,7 +117,24 @@ async function baue(modell) {
     if (!n) throw new Error(`${modell}: Knoten ${name} fehlt`);
     if (w.scale) n.setScale(w.scale);
   }
-  // Ungenutzte Attribute entfernen; Blender-Export enthält nur POSITION/NORMAL/TEXCOORD_n
+  // Indizes kanonisch: je Dreieck kleinster Index vorn (Umlaufsinn bleibt), dann Dreiecke sortiert → byte-reproduzierbar
+  for (const mesh of root.listMeshes()) {
+    for (const p of mesh.listPrimitives()) {
+      const idx = p.getIndices();
+      if (!idx) continue;
+      const a = idx.getArray();
+      const tris = [];
+      for (let i = 0; i < a.length; i += 3) {
+        const t = [a[i], a[i + 1], a[i + 2]];
+        const r = t.indexOf(Math.min(...t));
+        tris.push([t[r], t[(r + 1) % 3], t[(r + 2) % 3]]);
+      }
+      tris.sort((x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2]);
+      const neu = new a.constructor(a.length);
+      tris.forEach((t, i) => neu.set(t, i * 3));
+      idx.setArray(neu);
+    }
+  }
   let dreiecke = 0;
   const jeMesh = [];
   for (const mesh of root.listMeshes()) {

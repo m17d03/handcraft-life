@@ -636,6 +636,17 @@ def u8(a):
     return (np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8)
 
 
+def halbiere(a, normal=False):
+    """RGBA8-Karte auf halbe Kantenlänge (2×2-Mittel); Normal-Maps danach neu normiert."""
+    f = a.astype(np.float32) / 255
+    f = (f[0::2, 0::2] + f[1::2, 0::2] + f[0::2, 1::2] + f[1::2, 1::2]) / 4
+    if normal:
+        v = f[..., :3] * 2 - 1
+        v /= np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-6)
+        f[..., :3] = v * 0.5 + 0.5
+    return u8(f)
+
+
 def karten(b, ao_min=0.0, ao_gamma=1.0):
     """Gebackene Kanäle → RGBA8-Karten (erste Zeile oben): farbe (sRGB), orm (R=AO, G=Rauheit, B=Metall), normal."""
     out = {}
@@ -690,7 +701,7 @@ def exportiere(modell, wurzel, manifest):
     pfad = os.path.join(ziel, 'roh.glb')
     bpy.ops.export_scene.gltf(
         filepath=pfad, export_format='GLB', use_selection=True, export_yup=True, export_apply=True,
-        export_texcoords=True, export_normals=True, export_tangents=False, export_materials='EXPORT',
+        export_texcoords=True, export_normals=True, export_tangents=True, export_materials='EXPORT',
         export_image_format='NONE', export_extras=False, export_cameras=False, export_lights=False,
         export_animations=False, export_skins=False, export_morph=False,
     )

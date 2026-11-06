@@ -31,6 +31,13 @@ await page.waitForFunction(() => window.__spiel?.ui().anDerBank === true && wind
 await page.waitForTimeout(1500);
 await page.screenshot({ path: aus, type: 'jpeg', quality: 88 });
 console.log('Screenshot:', aus);
+const perf = await page.evaluate(() => {
+  const f = /** @type {any} */ (window).__perf;
+  if (typeof f !== 'function') return null;
+  const p = f();
+  return { textureMemoryMB: p.textureMemoryMB, drawCalls: p.drawCalls ?? p.calls, triangles: p.triangles };
+});
+console.log('Perf:', JSON.stringify(perf));
 const debug = await page.locator('.debug-overlay, #debug, [data-debug]').first().textContent().catch(() => null);
 if (debug) console.log('Debug-Overlay:', debug.replace(/\s+/g, ' ').slice(0, 300));
 console.log(fehler.length ? `Konsole (${fehler.length}):\n  ${fehler.join('\n  ')}` : 'Konsole: keine Fehler/Warnungen');

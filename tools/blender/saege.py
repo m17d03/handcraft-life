@@ -115,7 +115,7 @@ def blatt():
         d = (0.9 - 0.15 * t) / 1000
         v.co.x = d / 2 if v.co.x > -0.5 else -d / 2
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='BEAUTY', ngon_method='BEAUTY')
+    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='FIXED', ngon_method='EAR_CLIP')  # deterministisch
     # UV: planar auf YZ; u entlang des Blatts, v über die Höhe
     uv = bm.loops.layers.uv.new('UVMap')
     bmin, bmax = ZAHN_B, ZAHN_B + H_FERSE + 4
@@ -151,10 +151,10 @@ def mat_buche(name='Buche'):
         flecken = hcl.mathe(nt, 'LESS_THAN', fl.outputs['Distance'], 0.16)
         ton = hcl.knoten(nt, 'ShaderNodeTexNoise', Scale=25.0, Detail=2.0)
         nt.links.new(k, ton.inputs['Vector'])
-        basis = hcl.rampe(nt, ton.outputs['Fac'], [(0.3, '#C27F47'), (0.7, '#D2925A')])
-        farbe = hcl.mische(nt, hcl.mathe(nt, 'MULTIPLY', ringe, 0.4), basis, '#9A5A2C')
+        basis = hcl.rampe(nt, ton.outputs['Fac'], [(0.3, '#A86A3C'), (0.7, '#B87A48')])  # Buche geölt, satter
+        farbe = hcl.mische(nt, hcl.mathe(nt, 'MULTIPLY', ringe, 0.4), basis, '#83491F')
         farbe = hcl.mische(nt, hcl.mathe(nt, 'MULTIPLY', flecken, 0.35), farbe, '#8E5530')
-        rau = hcl.mathe(nt, 'MULTIPLY_ADD', ringe, 0.08, 0.36)
+        rau = hcl.mathe(nt, 'MULTIPLY_ADD', ringe, 0.08, 0.46)
         hoehe = hcl.mathe(nt, 'MULTIPLY', hcl.mathe(nt, 'ADD', ringe, hcl.mathe(nt, 'MULTIPLY', flecken, 0.6)), -1.0)
         return {'farbe': farbe, 'rauheit': rau, 'hoehe': hoehe, 'bump_staerke': 0.25, 'bump_abstand': 0.00015}
     return hcl.pbr(name, '#C8874E', 0.4, 0.0, aufbau)

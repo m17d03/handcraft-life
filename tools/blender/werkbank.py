@@ -97,7 +97,7 @@ def platte():
     # Boolean-Ergebnis in saubere Dreiecke (N-Ecke mit Löchern backen und exportieren nicht zuverlässig)
     bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(1), verts=bm.verts, edges=bm.edges)
     bmesh.ops.connect_verts_concave(bm, faces=bm.faces)
-    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='BEAUTY', ngon_method='EAR_CLIP')
+    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='FIXED', ngon_method='EAR_CLIP')
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(ob.data)
     bm.free()
