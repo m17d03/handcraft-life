@@ -39,6 +39,10 @@ export interface Ablage {
   /**
    * In EINER Transaktion: `aktuell` ersetzen, Kopie als Autosave in `sicherung`, Autosaves über
    * `AUTOSAVES_BEHALTEN` hinaus löschen. Scheitert die Transaktion, bleibt alles wie vorher.
+   *
+   * Reihenfolge (Ticket 017, F7): Der Spielstand-Dienst ruft `schreiben` sofort auf, auch wenn ein früherer
+   * Aufruf noch läuft. Die Ablage muss Aufrufe in Aufrufreihenfolge übernehmen – ein früherer Aufruf darf
+   * nie nach einem späteren wirksam werden (IndexedDB: Transaktionen in Anlegereihenfolge).
    */
   schreiben(json: string, zeit: string): Promise<void>;
   /** Legt eine Sicherung an (Rohkopie vor Migration, defekter/zu neuer Stand); rotiert nach `BEHALTEN`. */

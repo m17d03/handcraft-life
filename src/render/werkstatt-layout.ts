@@ -69,7 +69,13 @@ export const ARBEITSANSICHT = {
   /** Rand links/rechts neben dem Brett */
   randM: 0.2, // Brettenden bleiben ausserhalb von Notch/Randzone (Bezugsende antippen)
   minAbstand: 0.55,
-  maxAbstand: 1.6,
+  maxAbstand: 2.0,
+  /** Randzone gegen Safaris Rand-Wischgesten (pt, wie RANDZONE_PT der Eingabe) – Brettenden liegen innen (Ticket 017) */
+  randzonePt: 20,
+  /** Zusätzlicher Abstand der Brettenden zur Randzone (pt): Fingerkuppe trifft das Ende sicher */
+  fingerReservePt: 14,
+  /** Sichtbarer Bereich über das Brettende hinaus (m): Anschlagwinkel und etwas Werkbank */
+  ueberstandM: 0.035,
 } as const;
 
 /** Raumgrenzen für die Ich-Kamera. */

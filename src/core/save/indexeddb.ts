@@ -70,7 +70,27 @@ export function verbindungVerloren(e: unknown): boolean {
   );
 }
 
-/** Sicherung innerhalb einer laufenden Transaktion einfügen und rotieren (Laufnummer aus vorhandenen Schlüsseln). */
+/**
+ * Sicherung mit bekannten Schlüsseln einfügen und rotieren – alle Anfragen synchron (Ticket 017, QA Runde 1):
+ * Beim Abbau der Seite (Navigation, iOS beendet) verwirft der Browser eine Transaktion, die noch auf einen
+ * Callback wartet, samt `aktuell`. Liefert die Schlüssel nach der Transaktion.
+ */
+function sicherungSofort(store: IDBObjectStore, art: SicherungsArt, zeit: string, json: string, vorhanden: readonly string[]): string[] {
+  const schluessel = naechsterSchluessel(art, zeit, vorhanden);
+  const eintrag: Sicherung = { schluessel, art, zeit, json };
+  store.put(eintrag, schluessel);
+  const weg = zuLoeschende(art, [...vorhanden, schluessel]);
+  for (const k of weg) store.delete(k);
+  return [...vorhanden, schluessel].filter((k) => !weg.includes(k));
+}
+
+/** Transaktion sofort abschliessen (keine weiteren Anfragen folgen) – wo verfügbar (Safari ≥ 15, Chromium ≥ 76). */
+function abschliessen(tx: IDBTransaction): void {
+  const t = tx as IDBTransaction & { commit?: () => void };
+  if (typeof t.commit === 'function') t.commit();
+}
+
+/** Rückfall ohne bekannte Schlüssel: Laufnummer aus `getAllKeys` innerhalb der Transaktion. */
 function sicherungEinfuegen(store: IDBObjectStore, art: SicherungsArt, zeit: string, json: string): void {
   const keys = store.getAllKeys();
   keys.onsuccess = () => {
@@ -82,10 +102,34 @@ function sicherungEinfuegen(store: IDBObjectStore, art: SicherungsArt, zeit: str
   };
 }
 
+/** Alle Schlüssel im Store `sicherung`; `null`, wenn das nicht gelingt (dann Rückfall beim Schreiben). */
+async function schluesselLesen(db: IDBDatabase): Promise<string[] | null> {
+  try {
+    const tx = db.transaction(STORE_SICHERUNG, 'readonly');
+    return (await anfrage(tx.objectStore(STORE_SICHERUNG).getAllKeys())).map(String);
+  } catch {
+    return null;
+  }
+}
+
 export class IndexedDbAblage implements Ablage {
   private db: Promise<IDBDatabase> | null = null;
+  /** Geöffnete Verbindung, sobald `db` erfüllt ist – erlaubt Transaktionen ohne Warten (Ticket 017, F7). */
+  private offen: IDBDatabase | null = null;
+  /** Laufnummer des letzten `schreiben()`-Aufrufs bzw. der zuletzt angelegten Schreib-Transaktion. */
+  private schreibNr = 0;
+  private angelegtNr = 0;
+  /**
+   * Schlüssel im Store `sicherung`, wie sie nach allen angelegten Transaktionen sein werden (beim Öffnen
+   * gelesen, danach mitgeführt). `null` = unbekannt (Lesefehler, abgebrochene Transaktion) → Rückfall.
+   */
+  private schluessel: string[] | null = null;
+  /** Anzahl angelegter Schreib-Transaktionen (Schreiben und Sichern) – erkennt veraltete Schlüssel-Lesungen. */
+  private txZaehler = 0;
   /** Zähler geöffneter Verbindungen (Diagnose/Test). */
   oeffnungen = 0;
+  /** Angelegte Schreib-Transaktionen und übersprungene ältere Aufrufe (Diagnose/Test). */
+  readonly schreibStatistik = { angelegt: 0, uebersprungen: 0, sofort: 0 };
 
   constructor(private readonly fabrik: IDBFactory | undefined = (globalThis as { indexedDB?: IDBFactory }).indexedDB) {}
 
@@ -94,16 +138,21 @@ export class IndexedDbAblage implements Ablage {
       if (this.fabrik === undefined) return Promise.reject(new Error('IndexedDB nicht verfügbar'));
       this.oeffnungen += 1;
       const verwerfen = (): void => {
-        if (this.db === verbindung) this.db = null;
+        if (this.db === verbindung) {
+          this.db = null;
+          this.offen = null;
+        }
       };
       const verbindung: Promise<IDBDatabase> = oeffnen(this.fabrik).then(
-        (db) => {
+        async (db) => {
+          this.schluessel = await schluesselLesen(db);
           // Vom Browser geschlossen oder neue DB-Version in anderem Tab → beim nächsten Zugriff neu öffnen.
           db.onclose = verwerfen;
           db.onversionchange = () => {
             db.close();
             verwerfen();
           };
+          if (this.db === verbindung) this.offen = db;
           return db;
         },
         (e: unknown) => {
@@ -116,14 +165,41 @@ export class IndexedDbAblage implements Ablage {
     return this.db;
   }
 
-  /** Führt `f` aus; ist die Verbindung verloren, wird sie verworfen und `f` genau einmal wiederholt. */
-  private async mitDb<T>(f: (db: IDBDatabase) => Promise<T>): Promise<T> {
+  /**
+   * Führt `f` aus; ist die Verbindung verloren, wird sie verworfen und `f` genau einmal wiederholt.
+   * Ist die Verbindung schon offen, läuft `f` noch im selben Aufruf (synchron) – wichtig für `pagehide`:
+   * die Transaktion existiert dann, bevor der Browser die Seite einfriert oder beendet.
+   */
+  private mitDb<T>(f: (db: IDBDatabase) => Promise<T>): Promise<T> {
+    const offen = this.offen;
+    if (offen !== null) {
+      const nochmal = (e: unknown): Promise<T> => {
+        if (!verbindungVerloren(e)) return Promise.reject(e instanceof Error ? e : new Error(String(e)));
+        if (this.offen === offen) {
+          this.offen = null;
+          this.db = null;
+        }
+        return this.verbindung().then(f);
+      };
+      try {
+        return f(offen).catch(nochmal);
+      } catch (e) {
+        return nochmal(e);
+      }
+    }
+    return this.mitDbWarten(f);
+  }
+
+  private async mitDbWarten<T>(f: (db: IDBDatabase) => Promise<T>): Promise<T> {
     const versuch = this.verbindung();
     try {
       return await f(await versuch);
     } catch (e) {
       if (!verbindungVerloren(e)) throw e;
-      if (this.db === versuch) this.db = null;
+      if (this.db === versuch) {
+        this.db = null;
+        this.offen = null;
+      }
       return f(await this.verbindung());
     }
   }
@@ -136,12 +212,27 @@ export class IndexedDbAblage implements Ablage {
     });
   }
 
+  /**
+   * Schreib-Transaktionen auf denselben Stores führt IndexedDB in der Reihenfolge ihres Anlegens aus. Darum
+   * gilt: Aufrufreihenfolge = Anlegereihenfolge = Ergebnis. Ein älterer Aufruf, dessen Transaktion erst nach
+   * einer neueren angelegt würde (Warten auf die Verbindung, Wiederholung nach Verbindungsverlust), wird
+   * übersprungen – der neuere Stand ist schon eingereiht und darf nie überschrieben werden.
+   */
   schreiben(json: string, zeit: string): Promise<void> {
+    this.schreibNr += 1;
+    const nr = this.schreibNr;
     return this.mitDb((db) => {
+      if (nr < this.angelegtNr) {
+        this.schreibStatistik.uebersprungen += 1;
+        return Promise.resolve();
+      }
       const tx = db.transaction([STORE_SPIELSTAND, STORE_SICHERUNG], 'readwrite');
-      const ende = fertig(tx);
+      this.angelegtNr = nr;
+      this.txZaehler += 1;
+      this.schreibStatistik.angelegt += 1;
+      const ende = this.beobachten(tx);
       tx.objectStore(STORE_SPIELSTAND).put(json, SCHLUESSEL_AKTUELL);
-      sicherungEinfuegen(tx.objectStore(STORE_SICHERUNG), 'autosave', zeit, json);
+      this.sicherungAnfragen(tx, 'autosave', zeit, json);
       return ende;
     });
   }
@@ -149,10 +240,43 @@ export class IndexedDbAblage implements Ablage {
   sichern(art: Exclude<SicherungsArt, 'autosave'>, json: string, zeit: string): Promise<void> {
     return this.mitDb((db) => {
       const tx = db.transaction(STORE_SICHERUNG, 'readwrite');
-      const ende = fertig(tx);
-      sicherungEinfuegen(tx.objectStore(STORE_SICHERUNG), art, zeit, json);
+      this.txZaehler += 1;
+      const ende = this.beobachten(tx);
+      this.sicherungAnfragen(tx, art, zeit, json);
       return ende;
     });
+  }
+
+  /** Sicherung in `tx`: mit bekannten Schlüsseln synchron + `commit()`, sonst über `getAllKeys`. */
+  private sicherungAnfragen(tx: IDBTransaction, art: SicherungsArt, zeit: string, json: string): void {
+    const store = tx.objectStore(STORE_SICHERUNG);
+    if (this.schluessel === null) {
+      sicherungEinfuegen(store, art, zeit, json);
+      return;
+    }
+    this.schluessel = sicherungSofort(store, art, zeit, json, this.schluessel);
+    this.schreibStatistik.sofort += 1;
+    abschliessen(tx);
+  }
+
+  /** Ende der Transaktion; scheitert sie, sind die mitgeführten Schlüssel unsicher → beim nächsten Mal neu lesen. */
+  private beobachten(tx: IDBTransaction): Promise<void> {
+    return fertig(tx).then(
+      () => {
+        if (this.schluessel === null && this.offen !== null) {
+          const db = this.offen;
+          const stand = this.txZaehler;
+          // Nur übernehmen, wenn seither keine Schreib-Transaktion angelegt wurde (sonst wäre die Liste veraltet)
+          void schluesselLesen(db).then((k) => {
+            if (this.offen === db && this.schluessel === null && this.txZaehler === stand) this.schluessel = k;
+          });
+        }
+      },
+      (e: unknown) => {
+        this.schluessel = null;
+        throw e;
+      },
+    );
   }
 
   sicherungen(): Promise<Sicherung[]> {

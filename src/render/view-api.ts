@@ -49,6 +49,8 @@ export interface WerkstattViewZustand {
   risse: { a: number | null; b: number | null };
   /** Angezeigte Endwinkel (Grad, echt; gezeichnet überzeichnet). */
   winkel: { a: number; b: number };
+  /** Ticket 017 (N3): Anschlagwinkel liegen an beiden Enden an (Bezugsende-Phase), Lichtspalt am schiefen Ende. */
+  anschlagwinkel: boolean;
   /** Ticket 018: Diagnose für Debug-Overlay und E2E-Fehlermeldungen (Inhalt kann sich ändern). */
   diagnose: WerkstattDiagnose;
 }

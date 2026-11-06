@@ -88,8 +88,24 @@ export class IchKamera {
 }
 
 /**
+ * Randzone in der Arbeitsansicht (Ticket 017, Befund 016): Bildschirmbreite und je Seite gesperrte Pixel
+ * (Safe Area + Randzone gegen Safaris Rand-Wischgesten + Fingerreserve). Beide Brettenden müssen innerhalb
+ * `[px, breitePx − px]` liegen, damit sie antippbar sind.
+ */
+export interface ArbeitsRand {
+  readonly breitePx: number;
+  readonly px: number;
+  /** Tiefe des Bretts (m, Richtung z): die vordere Ecke liegt näher an der Kamera und erscheint weiter aussen. */
+  readonly tiefeM: number;
+  /** Was über das Ende hinaus sichtbar bleiben soll (m), z. B. der Anschlagwinkel. */
+  readonly ueberstandM: number;
+}
+
+/**
  * Arbeitsansicht: Kamera blickt mit fester Neigung auf `ziel` und steht so weit weg, dass
- * `breiteM` (plus Rand) horizontal ins Bild passt.
+ * `breiteM` (plus Rand) horizontal ins Bild passt. Mit `rand` (Ticket 017) wird in Pixeln gerahmt: der
+ * Abstand ist der kleinste, bei dem alle Eckpunkte der Brettenden (vorn und hinten, inkl. Überstand)
+ * ausserhalb der Randzone liegen – ohne `rand` wie bisher mit `randM`.
  */
 export function arbeitsPose(
   ziel: Vec3,
@@ -97,10 +113,22 @@ export function arbeitsPose(
   seitenverhaeltnis: number,
   fovY: number,
   opt: { neigung: number; randM: number; minAbstand: number; maxAbstand: number },
+  rand?: ArbeitsRand,
 ): KameraPose {
   const tanH = Math.tan(fovY / 2) * Math.max(0.1, seitenverhaeltnis);
-  const abstand = clamp((breiteM / 2 + opt.randM) / tanH, opt.minAbstand, opt.maxAbstand);
   const f = forwardFromYawPitch(0, opt.neigung);
+  let noetig = (breiteM / 2 + opt.randM) / tanH;
+  if (rand !== undefined && rand.breitePx > 0) {
+    // ndcX = X / (Tiefe · tanH) ≤ k  mit  k = 1 − 2·px/Breite;  Tiefe = Abstand + (p − ziel)·f
+    const k = clamp(1 - (2 * Math.max(0, rand.px)) / rand.breitePx, 0.2, 1);
+    const x = breiteM / 2 + Math.max(0, rand.ueberstandM);
+    noetig = 0;
+    for (const dz of [-rand.tiefeM / 2, rand.tiefeM / 2]) {
+      const versatz = dz * f[2]; // Anteil der Ecke entlang der Blickrichtung (y = Brettoberseite = ziel)
+      noetig = Math.max(noetig, x / (tanH * k) - versatz);
+    }
+  }
+  const abstand = clamp(noetig, opt.minAbstand, opt.maxAbstand);
   return { eye: sub(ziel, scale(f, abstand)), yaw: 0, pitch: opt.neigung };
 }
 
