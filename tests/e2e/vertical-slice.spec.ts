@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../../src/perf/perf-snapshot';
 import type { WerkstattViewDebug } from '../../src/render/view-api';
 import type { SpielDebug } from '../../src/spiel/spiel';
+import { diagnose, notiz } from './diagnose';
 
 declare global {
   interface Window {
@@ -16,8 +17,10 @@ declare global {
 // über den Weg erkannt, Züge über die Richtungsumkehr; gewartet wird nur per Polling auf Zustände.
 // Der Spielzustand wird über window.__spiel (nur ?debug=1) gelesen, nie gesetzt.
 
-// ?test=1: Kamerafahrten ohne Dauer, dpr=1: weniger Pixel für die Software-GPU – der Ablauf selbst bleibt Touch (QA F9)
-const SPIEL = './spiel/?debug=1&saat=7&test=1&dpr=1';
+// ?test=1: Kamerafahrten ohne Dauer, dpr=0.5 und aa=0: weniger Pixel, kein MSAA für die Software-GPU in CI
+// (WebKit ohne GPU: bei dpr=1 mit MSAA ~1,8 s je Frame, Ticket 018) – der Ablauf selbst bleibt Touch (QA F9).
+// Bildqualität und Budgets prüft render.spec.ts mit Standardeinstellungen.
+const SPIEL = './spiel/?debug=1&saat=7&test=1&dpr=0.5&aa=0';
 const LANG = { timeout: 60_000 };
 
 type Schritt = { t: 'down' | 'move' | 'up'; id: number; x: number; y: number } | { t: 'warte'; ms: number };
@@ -133,8 +136,26 @@ async function saegen(page: Page, anzahl: number): Promise<void> {
   await zeiger(page, s);
 }
 
+// Ticket 018: Zeitpunkte der Ablaufschritte (s seit Teststart) – in CI als Annotation, um langsame Schritte zu finden
+let verlauf: [string, number][] = [];
+let verlaufStart = 0;
+const schritt = (name: string): void => {
+  verlauf.push([name, Math.round((Date.now() - verlaufStart) / 1000)]);
+};
+
 test.describe('Vertical Slice 0.1 (/spiel/)', () => {
   test.setTimeout(420_000);
+
+  test.beforeEach(() => {
+    verlauf = [];
+    verlaufStart = Date.now();
+  });
+
+  test.afterEach(async ({ page }, info) => {
+    if (verlauf.length === 0) return;
+    const diag = await Promise.race([diagnose(page), new Promise((r) => setTimeout(() => { r('diagnose: keine Antwort'); }, 10_000))]);
+    notiz(`018 slice ${info.project.name} ${info.status ?? '?'}`, { verlauf, diag }, 'warning');
+  });
 
   test('kompletter Ablauf mit Touch: Auftrag → Messen → Anreissen → Ansetzen → Sägen (Neuladen mittendrin) → Ergebnis → Abliefern', async ({ page }) => {
     test.skip(hochkant(page), 'Querformat-Ablauf (ADR 0004); Hochformat zeigt nur den Hinweis');
@@ -144,6 +165,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
       test.skip(true, 'Browser ohne WebGL 2');
       return;
     }
+    schritt('bereit');
     // Assets aus Ticket 012 sind eingebaut (keine Platzhalter)
     expect(await page.evaluate(() => window.__view?.zustand().assets)).toBe('modelle');
     const start = await zustand(page);
@@ -154,6 +176,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     // Geführt: Hinweis zum ersten Schritt
     await expect(page.locator('.hud-hinweis')).toContainText('Werkbank');
 
+    schritt('1 An die Werkbank');
     // 1) An die Werkbank: Auftrag wird angenommen, Brett gekauft (Autosave nach Kauf), Zuschnitt beginnt
     await zurWerkbank(page);
     let z = await zustand(page);
@@ -164,6 +187,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     await expect(page.locator('.hud-hinweis')).toContainText('Schritt 1/6');
     await gespeichert(page);
 
+    schritt('2 Bezugsende');
     // 2) Bezugsende: erst das schiefe Ende prüfen (Anschlagwinkel zeigt den Spalt), dann das andere wählen
     const ws = z?.inventar.werkstuecke.find((w) => w.id === z?.arbeit?.werkstueckId);
     expect(ws).toBeDefined();
@@ -192,6 +216,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     expect((await zustand(page))?.arbeit?.bezugsende).toBe(ende);
     await expect(page.locator('.hud-hinweis')).toContainText('Schritt 2/6');
 
+    schritt('3 Messen');
     // 3) Messen: Griff ziehen (Richtung folgt dem Bezugsende), dann mit ±0,5 genau auf 600 mm
     const soll = 600;
     const griff = await mitte(page, '.hud-massband-griff');
@@ -215,6 +240,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     // Massband ist im Bild ausgezogen
     expect(await page.evaluate(() => window.__view?.pick(window.innerWidth / 2, 5))).not.toBe('massband');
 
+    schritt('4 Anreissen');
     // 4) Anreissen (Autosave)
     await page.locator('.hud-anreissen').tap();
     await expect.poll(() => phase(page), LANG).toBe('ansetzen');
@@ -224,6 +250,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     await expect(page.locator('.hud-hinweis')).toContainText('Schritt 4/6');
     await gespeichert(page);
 
+    schritt('5 Ansetzen');
     // 5) Ansetzen: Blatt +0,8 mm auf die Abfallseite (20 px/mm)
     const blatt = await mitte(page, '.hud-ansetzen');
     await zeiger(page, ziehe(2, blatt, { x: blatt.x + 16, y: blatt.y }, 4));
@@ -231,6 +258,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     await page.getByRole('button', { name: 'Sägen ›' }).tap();
     await expect(page.locator('.hud')).toHaveAttribute('data-modus', 'werkbank-saegen');
 
+    schritt('6 Sägen');
     // 6) Sägen: 3 Züge, dann Neuladen mitten im Sägen (S2/S3)
     await saegen(page, 3);
     await expect.poll(() => phase(page), LANG).toBe('saegen');
@@ -252,15 +280,18 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     expect((await ui(page))?.anDerBank).toBe(false);
     await expect(page.locator('.hud-hinweis')).toContainText('wartet an der Werkbank');
 
+    schritt('nach Neuladen');
     // Zurück an die Bank: Ansetzen-Ansicht, dann vollständig sägen
     await zurWerkbank(page);
     await expect(page.locator('.hud')).toHaveAttribute('data-modus', 'werkbank-ansetzen');
     await page.getByRole('button', { name: 'Sägen ›' }).tap();
     await expect(page.locator('.hud')).toHaveAttribute('data-modus', 'werkbank-saegen');
     await saegen(page, 8);
+    schritt('8 Züge gesendet');
     await expect.poll(() => phase(page), LANG).toBe('ergebnis');
     await gespeichert(page);
 
+    schritt('7 Ergebniskarte = Erge');
     // 7) Ergebniskarte = Ergebnis aus src/core
     z = await zustand(page);
     const e = z?.arbeit?.ergebnis;
@@ -293,6 +324,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
       await expect.poll(() => phase(page), LANG).toBe('bezugsende');
     } else {
       await expect(karte.locator('.hud-preis')).toHaveText(`Preis ${String(e.preis)} G`);
+      schritt('8 Abliefern');
       // 8) Abliefern (Autosave): Geld = vorher + Preis, nächster Auftrag, geführter Zähler +1
       const geldVorher = z?.inventar.geld ?? 0;
       await karte.locator('.hud-abliefern').tap();
@@ -306,12 +338,14 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
       await expect(page.locator('.hud-geld')).toHaveText(`${String(geldVorher + e.preis)} G`);
       await expect(page.locator('.hud')).toHaveAttribute('data-modus', 'erkunden');
       await gespeichert(page);
+      schritt('abgeliefert');
       // Neuladen: alles erhalten (S2)
       const vorher = await zustand(page);
       await page.reload();
       expect(await bereit(page)).toBe(true);
       expect(await zustand(page)).toEqual(vorher);
     }
+    schritt('Ende');
     expect(fehler).toEqual([]);
   });
 

@@ -25,11 +25,16 @@ export class FpsMeter {
     this.last = undefined;
   }
 
-  /** Frames pro Sekunde im Fenster; 0 solange weniger als zwei Frames vorliegen. */
+  /**
+   * Frames pro Sekunde im Fenster. Liegen weniger als zwei Frames im Fenster (Frames seltener als
+   * 1×/Fenster, z. B. bei Hängern oder Software-Rendering), zählt der letzte Frame-Abstand: 3 s → 0,33 fps.
+   * 0 nur, solange noch kein Abstand bekannt ist.
+   */
   get fps(): number {
     const first = this.frames[0];
     const last = this.frames[this.frames.length - 1];
-    if (first === undefined || last === undefined || last.t <= first.t) return 0;
+    if (first === undefined || last === undefined) return 0;
+    if (last.t <= first.t) return last.gap > 0 ? 1000 / last.gap : 0;
     return ((this.frames.length - 1) * 1000) / (last.t - first.t);
   }
 

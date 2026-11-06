@@ -5,8 +5,8 @@
  */
 import * as THREE from 'three';
 import type { PerfMelder } from '../perf/perf-snapshot';
-import { ladeWerkstattAssets, type WerkstattAssets } from './assets';
-import { aufloesungsGrenzen, DynamischeAufloesung, type AufloesungsParameter } from './aufloesung';
+import { ASSET_FRIST_MS, ladeWerkstattAssets, mitFrist, type WerkstattAssets } from './assets';
+import { aufloesungsGrenzen, DynamischeAufloesung, istSoftwareRenderer, type AufloesungsParameter } from './aufloesung';
 import { bildschirmNachBrettMm, brettMmNachBildschirm, type BrettLage } from './brett-koordinaten';
 import { erzeugeHolzTexturen, type HolzTexturen } from './holztextur';
 import { arbeitsPose, IchKamera, Kamerafahrt, type KameraPose } from './ich-kamera';
@@ -33,8 +33,20 @@ export interface WerkstattOptionen {
   readonly assetBasis?: string;
   /** Dauer der Kamerafahrt (ms); Standard ARBEITSANSICHT.fahrtMs. Tests (`?test=1`) setzen 0. */
   readonly kamerafahrtMs?: number;
-  /** Ladefehler der Assets (Szene läuft mit Platzhaltern weiter). */
+  /**
+   * Ladefehler der Assets oder Frist überschritten (Szene läuft mit Platzhaltern weiter). Bei überschrittener
+   * Frist wird im Hintergrund weitergeladen; kommen die Modelle doch noch, folgt `beiAssetsNachgeladen`.
+   */
   readonly beiAssetFehler?: (fehler: unknown) => void;
+  /** Modelle sind nach überschrittener Frist doch noch angekommen und eingebaut (Hinweis wieder ausblenden). */
+  readonly beiAssetsNachgeladen?: () => void;
+  /** Frist bis zur Platzhalter-Szene (ms), Standard ASSET_FRIST_MS. */
+  readonly assetFristMs?: number;
+  /**
+   * GL-Renderer-Name des Geräts (vor dem Erzeugen ermittelt). Software-Rendering → Pixeldichte 1, kein MSAA.
+   * Ohne Angabe ermittelt `erzeugeWerkstattView` ihn selbst.
+   */
+  readonly glRenderer?: string;
 }
 
 const endlich = (v: number, ersatz = 0): number => (Number.isFinite(v) ? v : ersatz);
@@ -75,6 +87,16 @@ class WerkstattViewThree implements WerkstattViewDebug {
   private verloren = false;
   private feedbackOffen = false;
   private beendet = false;
+  /** false, solange nach Aufbau/Wiederherstellung die Shader übersetzt werden (dann wird nicht gezeichnet) */
+  private shaderBereit = true;
+  private assetFehler: string | null = null;
+  private readonly frameAbstaende: number[] = [];
+  private readonly renderDauern: number[] = [];
+  private readonly schleifenFehler: string[] = [];
+  private readonly glRenderer: string;
+  /** Software-Rendering erkannt: Pixeldichte 1, kein MSAA */
+  private readonly software: boolean;
+  private readonly komprimiert: string[];
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -82,7 +104,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
   ) {
     this.perf = opt.perf ?? null;
     this.fahrt = new Kamerafahrt(opt.kamerafahrtMs ?? ARBEITSANSICHT.fahrtMs);
-    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, stencil: false, powerPreference: 'high-performance' });
+    this.software = istSoftwareRenderer(opt.glRenderer ?? '');
+    const r = new THREE.WebGLRenderer({ canvas, antialias: !this.software && (opt.aufloesung?.msaa ?? true), alpha: false, stencil: false, powerPreference: 'high-performance' });
     this.renderer = r;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 0.78;
@@ -93,7 +116,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
     r.shadowMap.autoUpdate = false;
     r.shadowMap.needsUpdate = true;
 
-    const grenzen = aufloesungsGrenzen(window.devicePixelRatio, opt.aufloesung?.pixeldichteDeckel);
+    const deckel = opt.aufloesung?.pixeldichteDeckel;
+    const grenzen = aufloesungsGrenzen(window.devicePixelRatio, this.software ? Math.min(1, deckel ?? 1) : deckel);
     this.maxDichte = grenzen.max;
     this.dyn = (opt.aufloesung?.dynamisch ?? true) ? new DynamischeAufloesung(grenzen.min, grenzen.max) : null;
 
@@ -104,12 +128,17 @@ class WerkstattViewThree implements WerkstattViewDebug {
 
     canvas.addEventListener('webglcontextlost', this.beiVerlust);
     canvas.addEventListener('webglcontextrestored', this.beiWiederherstellung);
+    document.addEventListener('visibilitychange', this.beiSichtwechsel);
+    window.addEventListener('pagehide', this.beiSichtwechsel);
+    window.addEventListener('pageshow', this.beiSichtwechsel);
     window.addEventListener('resize', this.groesseAnpassen);
     this.beobachter = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(this.groesseAnpassen);
     this.beobachter?.observe(canvas);
     this.groesseAnpassen();
 
     const gl = r.getContext();
+    this.glRenderer = glRendererName(gl);
+    this.komprimiert = (gl.getSupportedExtensions() ?? []).filter((e) => /compressed|compression/i.test(e));
     const samples = Number(gl.getParameter(gl.SAMPLES)) || 0;
     this.perf?.setzeMeta({ engine: 'three', engineVersion: THREE.REVISION, scene: SZENEN_ID, aa: samples > 0 ? 'msaa' : 'none', msaaSamples: samples });
   }
@@ -124,22 +153,87 @@ class WerkstattViewThree implements WerkstattViewDebug {
   /** Lädt die Assets (falls `assetBasis` gesetzt), baut die Szene darauf auf und startet die Schleife. */
   async starten(): Promise<void> {
     if (this.opt.assetBasis !== undefined) {
+      const laden = ladeWerkstattAssets(this.renderer, this.opt.assetBasis);
       try {
-        this.assets = await ladeWerkstattAssets(this.renderer, this.opt.assetBasis);
+        this.assets = await mitFrist(laden, this.opt.assetFristMs ?? ASSET_FRIST_MS, 'Modelle laden');
       } catch (e) {
         this.assets = null;
+        this.assetFehler = e instanceof Error ? e.message : String(e);
+        console.warn(`Werkstatt-Assets nicht geladen, Platzhalter aktiv: ${this.assetFehler}`);
         this.opt.beiAssetFehler?.(e);
+        // Langsames Netz: weiterladen und die Modelle einbauen, sobald sie da sind (echte Fehler enden hier still,
+        // sie sind oben schon gemeldet)
+        laden.then(this.assetsNachladen, () => undefined);
       }
     }
     this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
     this.szene.umgebungErzeugen(this.renderer);
     this.anwenden(true);
+    // Shader vorab übersetzen (parallel, wo der Browser es kann): sonst hängen die ersten Frames mehrere Sekunden
+    // (ohne GPU gemessen 3–5 s je Hänger, Ticket 018) – besser vor „bereit“ als mitten im Spiel.
+    await this.shaderUebersetzen();
     if (!this.beendet) this.renderer.setAnimationLoop(this.frame);
+  }
+
+  /** Shader der aktuellen Szene übersetzen; bis dahin zeichnet die Schleife nicht (keine Hänger mitten im Spiel). */
+  private async shaderUebersetzen(): Promise<void> {
+    const szene = this.szene;
+    this.shaderBereit = false;
+    try {
+      await this.renderer.compileAsync(szene.szene, this.kamera);
+    } catch (e) {
+      console.warn(`Shader-Vorübersetzung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // Nur freigeben, wenn inzwischen nicht schon eine neuere Szene übersetzt wird
+    if (szene === this.szene) {
+      this.shaderBereit = true;
+      this.dyn?.pause();
+    }
+  }
+
+  /** Modelle kamen nach der Frist doch noch: Szene im selben Kontext neu aufbauen. */
+  private readonly assetsNachladen = (assets: WerkstattAssets): void => {
+    if (this.beendet) return;
+    this.assets = assets;
+    this.assetFehler = null;
+    this.holz = null;
+    if (!this.verloren) this.szeneNeuAufbauen(true);
+    this.opt.beiAssetsNachgeladen?.();
+  };
+
+  /**
+   * Szene aus dem gespeicherten Zustand neu aufbauen. `alteEntsorgen` nur im selben Kontext: Nach einem
+   * Kontextverlust tragen die alten Objekte Dispose-Hörer der alten Renderer-Module (dispose() würde fremde
+   * GL-Objekte löschen → Warnungen), dort wird die alte Szene nur verworfen.
+   */
+  private szeneNeuAufbauen(alteEntsorgen: boolean): void {
+    const alt = this.szene as WerkstattSzene | undefined;
+    this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
+    this.szene.umgebungErzeugen(this.renderer);
+    this.anwenden(true);
+    if (alteEntsorgen) alt?.dispose();
+    void this.shaderUebersetzen();
   }
 
   // ------------------------------------------------------------------ Schleife
 
+  /**
+   * Ein Fehler in einem Frame darf die Schleife nicht beenden (three fordert den nächsten Frame erst nach
+   * dem Rückruf an): melden (einmal je Meldung), merken, weiterzeichnen.
+   */
   private readonly frame = (jetzt: number): void => {
+    try {
+      this.frameZeichnen(jetzt);
+    } catch (e) {
+      const text = e instanceof Error ? e.message : String(e);
+      if (!this.schleifenFehler.includes(text)) {
+        if (this.schleifenFehler.length < 5) this.schleifenFehler.push(text);
+        console.error(`Render-Schleife: ${text}`);
+      }
+    }
+  };
+
+  private frameZeichnen(jetzt: number): void {
     this.perf?.frameBeginn(jetzt);
     const dt = this.letzteZeit === null ? 0 : jetzt - this.letzteZeit;
     this.letzteZeit = jetzt;
@@ -157,11 +251,17 @@ class WerkstattViewThree implements WerkstattViewDebug {
     const ziel = add(e, forwardFromYawPitch(this.pose.yaw, this.pose.pitch));
     this.kamera.lookAt(ziel[0], ziel[1], ziel[2]);
 
-    if (this.dyn?.messe(dt)) this.groesseAnpassen();
+    // Nur echte Frames messen: Während Kontextverlust oder Shader-Übersetzung wird nicht gezeichnet, die leeren
+    // Durchläufe sind schnell und würden die Auflösung fälschlich heben (QA 018 N2); danach folgt pause().
+    const zeichnet = this.shaderBereit && !this.verloren;
+    if (zeichnet && this.dyn?.messe(dt)) this.groesseAnpassen();
 
     let gezeichnet = false;
-    if (!this.verloren && !this.renderer.getContext().isContextLost()) {
+    if (this.shaderBereit && !this.verloren && !this.renderer.getContext().isContextLost()) {
+      const t0 = performance.now();
       this.renderer.render(this.szene.szene, this.kamera);
+      merke(this.renderDauern, performance.now() - t0);
+      if (dt > 0) merke(this.frameAbstaende, dt);
       gezeichnet = true;
       this.frames++;
     }
@@ -174,7 +274,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
       this.bereit = true;
       this.opt.beiBereit?.();
     }
-  };
+  }
 
   private readonly groesseAnpassen = (): void => {
     if (this.beendet) return;
@@ -194,16 +294,19 @@ class WerkstattViewThree implements WerkstattViewDebug {
 
   private readonly beiVerlust = (): void => {
     this.verloren = true;
+    this.dyn?.pause();
   };
 
   private readonly beiWiederherstellung = (): void => {
     this.verloren = false;
-    // Alle GPU-Objekte des alten Kontexts sind weg. Die alten Three-Objekte tragen noch Dispose-Hörer der
-    // alten Renderer-Module (dispose() würde fremde GL-Objekte löschen → Warnungen). Darum die Szene
-    // ohne dispose verwerfen und aus dem gespeicherten Zustand neu aufbauen (Holztextur wird wiederverwendet).
-    this.szene = new WerkstattSzene(this.holzTexturen(), this.anisotropie, this.assets);
-    this.szene.umgebungErzeugen(this.renderer);
-    this.anwenden(true);
+    // Alle GPU-Objekte des alten Kontexts sind weg: Szene ohne dispose verwerfen, neu aufbauen, Shader vorab
+    // übersetzen (Holztextur bzw. Modell-Vorlagen werden wiederverwendet).
+    this.szeneNeuAufbauen(false);
+  };
+
+  /** Hintergrund/App-Wechsel: Die Lücke bis zum nächsten Frame ist keine Frame-Zeit. */
+  private readonly beiSichtwechsel = (): void => {
+    this.dyn?.pause();
   };
 
   /**
@@ -327,6 +430,9 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.renderer.setAnimationLoop(null);
     this.canvas.removeEventListener('webglcontextlost', this.beiVerlust);
     this.canvas.removeEventListener('webglcontextrestored', this.beiWiederherstellung);
+    document.removeEventListener('visibilitychange', this.beiSichtwechsel);
+    window.removeEventListener('pagehide', this.beiSichtwechsel);
+    window.removeEventListener('pageshow', this.beiSichtwechsel);
     window.removeEventListener('resize', this.groesseAnpassen);
     this.beobachter?.disconnect();
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose() vor dem Ende von starten()
@@ -351,12 +457,59 @@ class WerkstattViewThree implements WerkstattViewDebug {
       assets: this.szene.mitAssets ? 'modelle' : 'platzhalter',
       risse: { ...this.risse },
       winkel: { ...this.winkel },
+      diagnose: {
+        glRenderer: this.glRenderer,
+        software: this.software,
+        komprimiert: [...this.komprimiert],
+        assetLadeMs: this.assets?.info.ladeMs ?? null,
+        assetFehler: this.assetFehler,
+        ktx2: this.assets ? { ...this.assets.info.ktx2 } : null,
+        texturFormat: this.assets?.info.texturFormat ?? null,
+        pixeldichte: this.renderer.getPixelRatio(),
+        frameAbstandMs: [...this.frameAbstaende],
+        renderMs: [...this.renderDauern],
+        schleifenFehler: [...this.schleifenFehler],
+      },
     };
   }
 
   bildschirmpunktVon(id: string): { x: number; y: number } | null {
     const m = this.szene.objektMitte(id, this.lage);
     return m ? projectToScreen(this.projektion(), m) : null;
+  }
+}
+
+const DIAGNOSE_FRAMES = 12;
+
+/** Ringpuffer der letzten Frames (gerundet auf ms). */
+function merke(liste: number[], wert: number): void {
+  liste.push(Math.round(wert));
+  if (liste.length > DIAGNOSE_FRAMES) liste.shift();
+}
+
+/** GPU-Name (unmaskiert, falls erlaubt) – „llvmpipe“/„SwiftShader“ = Software-Rendering. */
+function glRendererName(gl: WebGLRenderingContext | WebGL2RenderingContext): string {
+  try {
+    const name = String(gl.getParameter(gl.RENDERER));
+    // Firefox/Chromium liefern den Namen direkt; WebKit maskiert ihn („WebKit WebGL“)
+    if (!/webgl/i.test(name)) return name;
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : name;
+  } catch {
+    return 'unbekannt';
+  }
+}
+
+/** GL-Renderer-Name über einen kurzlebigen Probe-Kontext (vor dem eigentlichen Renderer, wegen MSAA). */
+function probeRenderer(): string {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return '';
+    const name = glRendererName(gl);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return name;
+  } catch {
+    return '';
   }
 }
 
@@ -375,7 +528,7 @@ export function hatWebGL2(): boolean {
  */
 export async function erzeugeWerkstattView(canvas: HTMLCanvasElement, opt: WerkstattOptionen = {}): Promise<WerkstattViewDebug> {
   await new Promise<void>((r) => requestAnimationFrame(() => { r(); }));
-  const view = new WerkstattViewThree(canvas, opt);
+  const view = new WerkstattViewThree(canvas, { ...opt, glRenderer: opt.glRenderer ?? probeRenderer() });
   await view.starten();
   return view;
 }

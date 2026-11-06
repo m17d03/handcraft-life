@@ -42,10 +42,12 @@ async function start(): Promise<void> {
   const status = document.querySelector<HTMLElement>('#spiel-status');
   const canvas = document.querySelector<HTMLCanvasElement>('#scene');
   if (!canvas) throw new Error('Canvas #scene fehlt');
-  const melde = (text: string, fehler = false): void => {
+  /** `ecke`: kleiner Hinweis während des Spiels (oben rechts, überdeckt kein HUD-Element) statt Lade-/Fehlermeldung. */
+  const melde = (text: string, fehler = false, ecke = false): void => {
     if (!status) return;
     status.textContent = text;
     status.classList.toggle('fehler', fehler);
+    status.classList.toggle('ecke', ecke);
     status.hidden = text === '';
   };
 
@@ -71,9 +73,11 @@ async function start(): Promise<void> {
   let view: WerkstattViewDebug;
   let ersterFrame = false;
   let spielBereit = false;
+  // Ticket 018: Hinweis für den Spieler, solange Platzhalter statt der Modelle zu sehen sind (bleibt nach „bereit“)
+  let assetHinweis = '';
   const bereitPruefen = (): void => {
     if (!ersterFrame || !spielBereit || body.dataset['state'] === 'ready') return;
-    melde('');
+    melde(assetHinweis, false, true);
     body.dataset['state'] = 'ready';
     perf?.spielbar();
   };
@@ -85,8 +89,16 @@ async function start(): Promise<void> {
       // ?test=1 (nur mit Debug): Kamerafahrten ohne Dauer – verkürzt E2E-Wartezeiten, nicht den Ablauf (QA F9)
       ...(debug && params.has('test') ? { kamerafahrtMs: 0 } : {}),
       beiAssetFehler: (e) => {
-        // Spiel bleibt spielbar (Platzhalter-Modelle); sichtbar im Debug-Overlay
+        // Spiel bleibt spielbar (Platzhalter-Modelle); sichtbar für den Spieler und im Debug-Overlay
         setzeDebugZeile('assets', `Assets nicht geladen: ${e instanceof Error ? e.message : String(e)}`);
+        // kurz: passt in die Ecke über der Sägespur (ab 96 px); Grund steht im Debug-Overlay
+        assetHinweis = 'Einfache Grafik';
+        melde(assetHinweis, false, true);
+      },
+      beiAssetsNachgeladen: () => {
+        setzeDebugZeile('assets', 'Assets nachgeladen');
+        assetHinweis = '';
+        melde('');
       },
       beiBereit: () => {
         ersterFrame = true;

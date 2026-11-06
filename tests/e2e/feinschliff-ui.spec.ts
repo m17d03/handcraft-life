@@ -266,7 +266,7 @@ test.describe('Ticket 016 – Debug-Schalter (5× Geldanzeige)', () => {
     await zeiger(page, tippen(5, 0));
     const overlay = page.locator('#debug-overlay');
     await expect(overlay).toBeVisible();
-    await expect(overlay.locator('.debug-stats')).toHaveText(/fps [1-9]\d*/, LANG);
+    await expect(overlay.locator('.debug-stats')).toHaveText(/fps ([1-9]\d*|0,[1-9])/, LANG);
     await expect(overlay).toContainText('Speicher:', LANG);
     const stil = await page.evaluate(() => {
       const o = document.querySelector('#debug-overlay');
