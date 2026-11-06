@@ -811,3 +811,110 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     await expect(page.getByRole('heading', { name: 'Bitte quer halten' })).toBeVisible();
   });
 });
+
+// ------------------------------------------------------------------ Ticket 020: Sicherungen in zwei Tabs
+
+interface AblageImTab {
+  schreiben(json: string, zeit: string): Promise<void>;
+  lesen(): Promise<string | undefined>;
+  sicherungen(): Promise<{ schluessel: string; art: string; json: string }[]>;
+}
+declare global {
+  interface Window {
+    HclAblage?: { IndexedDbAblage: new () => AblageImTab };
+    __ablage020?: AblageImTab;
+  }
+}
+
+/** Die echte `IndexedDbAblage` als IIFE-Bündel (ohne Spiel), damit zwei Tabs sie direkt benutzen können. */
+let ablageBuendel: string | null = null;
+async function ablageCode(): Promise<string> {
+  if (ablageBuendel !== null) return ablageBuendel;
+  const { build } = await import('vite');
+  const aus = await build({
+    configFile: false,
+    logLevel: 'silent',
+    build: {
+      write: false,
+      minify: false,
+      lib: { entry: resolve(import.meta.dirname, '../../src/core/save/indexeddb.ts'), formats: ['iife'], name: 'HclAblage', fileName: 'ablage' },
+    },
+  });
+  const ergebnis = Array.isArray(aus) ? aus[0] : aus;
+  if (!ergebnis || !('output' in ergebnis)) throw new Error('Bündel fehlt');
+  const chunk = ergebnis.output.find((o) => o.type === 'chunk');
+  if (!chunk) throw new Error('Bündel ohne Code');
+  ablageBuendel = chunk.code;
+  return ablageBuendel;
+}
+
+async function tabMitAblage(page: Page): Promise<void> {
+  await page.goto('./');
+  await page.addScriptTag({ content: await ablageCode() });
+  await page.evaluate(async () => {
+    const K = window.HclAblage?.IndexedDbAblage;
+    if (!K) throw new Error('IndexedDbAblage fehlt');
+    window.__ablage020 = new K();
+    await window.__ablage020.lesen(); // Verbindung öffnen, Schlüssel lesen
+  });
+}
+
+const schreibenIn = (page: Page, i: number) =>
+  page.evaluate((n) => window.__ablage020?.schreiben(JSON.stringify(n), new Date().toISOString()), i);
+/** Zwei Speichervorgänge ohne Warten dazwischen (überlappende Transaktionen). */
+const zweiMal = (page: Page, runde: number, ks: number[]) =>
+  page.evaluate(
+    async ([r, k]) => {
+      const a = window.__ablage020;
+      if (!a) throw new Error('Ablage fehlt');
+      await Promise.all(k.map((x) => a.schreiben(JSON.stringify(r * 10 + x), new Date().toISOString())));
+    },
+    [runde, ks] as const,
+  );
+const kurzWarten = (page: Page) => page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+
+test.describe('Ticket 020: Sicherungs-Rotation mit zwei Tabs (echte IndexedDB)', () => {
+  test.beforeEach(({ page }) => {
+    test.skip(hochkant(page), 'einmal je Engine genügt');
+  });
+
+  test('abwechselnd speichern: genau 3 Autosaves, die letzten 3, eindeutig geordnet', async ({ page }) => {
+    const zweiter = await page.context().newPage();
+    await tabMitAblage(page);
+    await tabMitAblage(zweiter);
+    const N = 12;
+    for (let i = 1; i <= N; i++) {
+      const tab = i % 2 === 1 ? page : zweiter;
+      await schreibenIn(tab, i);
+      await kurzWarten(tab);
+    }
+    await kurzWarten(page);
+    const s = await page.evaluate(async () => (await window.__ablage020?.sicherungen()) ?? []);
+    const auto = s.filter((x) => x.art === 'autosave');
+    expect(auto).toHaveLength(3);
+    const lauf = auto.map((x) => x.schluessel.split('|')[1] ?? '');
+    expect(new Set(lauf).size).toBe(3);
+    expect([...lauf].sort()).toEqual(lauf);
+    // BroadcastChannel meldet die Laufnummern: die letzten 3 in Speicher-Reihenfolge
+    expect(auto.map((x) => x.json)).toEqual(['10', '11', '12']);
+    expect(await zweiter.evaluate(() => window.__ablage020?.lesen())).toBe('12');
+  });
+
+  test('gleichzeitig in beiden Tabs speichern: danach genau 3 Autosaves mit eindeutigen Laufnummern', async ({ page }) => {
+    const zweiter = await page.context().newPage();
+    await tabMitAblage(page);
+    await tabMitAblage(zweiter);
+    for (let runde = 0; runde < 5; runde++) {
+      await Promise.all([
+        zweiMal(page, runde, [1, 2]),
+        zweiMal(zweiter, runde, [3, 4]),
+      ]);
+    }
+    await kurzWarten(page);
+    await kurzWarten(zweiter);
+    const s = await zweiter.evaluate(async () => (await window.__ablage020?.sicherungen()) ?? []);
+    const auto = s.filter((x) => x.art === 'autosave');
+    expect(auto).toHaveLength(3);
+    expect(new Set(auto.map((x) => x.schluessel.split('|')[1])).size).toBe(3);
+  });
+});
