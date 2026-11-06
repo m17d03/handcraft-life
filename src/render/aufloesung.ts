@@ -48,11 +48,13 @@ const SPERRE_MAX = 64;
 /**
  * Dynamische Renderauflösung: Faktor (Pixel pro CSS-px) zwischen min und max, gesteuert über die
  * Frame-Zeiten von `stichprobe` Frames.
- * - Senkt in 0,25er-Schritten, wenn das Mittel > 115 % des Ziels liegt.
+ * - Senkt in 0,25er-Schritten, wenn das Mittel > 115 % des Ziels liegt UND mindestens ein Viertel der Frames
+ *   (≥ 3) so langsam ist – anhaltend langsam, nicht ein einzelner Hänger (CPU-Spitze: Senken brächte nichts).
  * - Hebt, wenn das Mittel < 70 % des Ziels liegt ODER jeder Frame im Takt der Anzeige kam (Mittel ≤ 110 % und
  *   längster ≤ 150 % des kürzesten Abstands = gemessene Bildwiederholrate). So erholt sie sich auch bei
  *   30 Hz (Low Power Mode), wo 23 ms nie erreichbar sind.
- * - Pendeln (heben → senken) sperrt weiteres Heben für eine wachsende Zahl Stichproben.
+ * - Pendeln (heben → senken) sperrt weiteres Heben für eine wachsende Zahl Stichproben; jede ruhige
+ *   Stichprobe (keine Änderung) halbiert die nächste Sperrdauer wieder.
  * - Notbremse: NOTBREMSE_FRAMES Frames über NOTBREMSE_MS in Folge → sofort min.
  * - `pause()` nach Hintergrund/Kontextverlust: Zähler zurück, die nächste Lücke wird nicht gewertet.
  */
@@ -62,6 +64,8 @@ export class DynamischeAufloesung {
   private n = 0;
   private kuerzester = Infinity;
   private laengster = 0;
+  /** Frames der Stichprobe über 115 % des Ziels */
+  private langsame = 0;
   private langsamInFolge = 0;
   private ignorieren = false;
   private letzteAenderung: 'hoch' | 'runter' | null = null;
@@ -112,15 +116,20 @@ export class DynamischeAufloesung {
     this.n++;
     this.kuerzester = Math.min(this.kuerzester, frameMs);
     this.laengster = Math.max(this.laengster, frameMs);
+    if (frameMs > this.zielMs * 1.15) this.langsame++;
     if (this.n < this.stichprobe) return false;
     const mittel = this.summe / this.n;
     const takt = this.kuerzester;
     const imTakt = mittel <= takt * 1.1 && this.laengster <= takt * 1.5;
+    const anhaltendLangsam = mittel > this.zielMs * 1.15 && this.langsame >= Math.max(3, Math.ceil(this.n / 4));
     this.stichprobeLeeren();
     if (this.sperre > 0) this.sperre--;
-    if (mittel > this.zielMs * 1.15) return this.setze(Math.max(this.min, this.wert - 0.25));
-    if (this.sperre === 0 && (mittel < this.zielMs * 0.7 || imTakt)) return this.setze(Math.min(this.max, this.wert + 0.25));
-    return false;
+    let geaendert = false;
+    if (anhaltendLangsam) geaendert = this.setze(Math.max(this.min, this.wert - 0.25));
+    else if (this.sperre === 0 && (mittel < this.zielMs * 0.7 || imTakt)) geaendert = this.setze(Math.min(this.max, this.wert + 0.25));
+    // Ruhige Phase: Sperre klingt ab
+    if (!geaendert) this.sperreDauer = Math.max(SPERRE_START, Math.floor(this.sperreDauer / 2));
+    return geaendert;
   }
 
   private setze(neu: number): boolean {
@@ -141,6 +150,7 @@ export class DynamischeAufloesung {
     this.n = 0;
     this.kuerzester = Infinity;
     this.laengster = 0;
+    this.langsame = 0;
   }
 }
 

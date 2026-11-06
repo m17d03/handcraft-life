@@ -235,9 +235,29 @@ test.describe('Spielseite /spiel/', () => {
     expect(z?.assets, JSON.stringify(z?.diagnose)).toBe('platzhalter');
     expect(z?.diagnose.assetFehler).toBeTruthy();
     await expect(page.locator('#debug-overlay')).toContainText('Assets nicht geladen');
-    // Spieler-Hinweis (auch ohne Debug sichtbar), bleibt nach „bereit“ stehen
-    await expect(page.locator('#spiel-status')).toBeVisible();
-    await expect(page.locator('#spiel-status')).toContainText('vereinfachte Darstellung');
+    // Spieler-Hinweis (auch ohne Debug sichtbar), bleibt nach „bereit“ stehen, liegt über dem HUD und
+    // überdeckt keine sichtbaren HUD-Elemente (QA 018 N3)
+    const hinweis = page.locator('#spiel-status');
+    await expect(hinweis).toBeVisible();
+    await expect(hinweis).toContainText('Einfache Grafik');
+    const lage = await page.evaluate(() => {
+      const s = document.querySelector('#spiel-status');
+      if (!s) return null;
+      const r = s.getBoundingClientRect();
+      const ueber = (a: DOMRect, b: DOMRect): boolean => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const verdeckt: string[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>('.hud-oben *, .hud-hinweis, .hud-aktionstaste, .hud-messwert, .hud-leiste, .hud-endpruefung')) {
+        const b = el.getBoundingClientRect();
+        if (b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== 'hidden' && ueber(r, b)) verdeckt.push(el.className);
+      }
+      // unten vor 84 px: darunter liegen HUD-Hinweis und (Werkbank) Sägespur
+      return { verdeckt, z: Number(getComputedStyle(s).zIndex), innen: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= 84, rect: [r.left, r.top, r.right, r.bottom] };
+    });
+    // Hochformat ist nicht spielbar (ADR 0004, „Bitte quer halten“ deckt alles) – Überdeckung zählt nur quer
+    const vp = page.viewportSize();
+    if (vp && vp.width > vp.height) expect(lage?.verdeckt).toEqual([]);
+    expect(lage?.z).toBeGreaterThan(30);
+    expect(lage?.innen, JSON.stringify(lage?.rect)).toBe(true);
     await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
     const id = await page.evaluate(() => {
       const p = window.__view?.weltNachBildschirm(1000);

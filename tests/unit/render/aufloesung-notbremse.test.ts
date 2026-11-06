@@ -110,6 +110,57 @@ describe('Erholung', () => {
   });
 });
 
+/** QA-Szenario 018: Takt `taktMs`, alle `alleMs` ein Hänger von `haengerMs`; Anteil der Zeit bei max. */
+function zeitBeiMax(taktMs: number, haengerMs: number, alleMs: number, dauerMs: number): { anteil: number; ende: number } {
+  const d = new DynamischeAufloesung(1.5, 2);
+  let t = 0;
+  let naechster = alleMs;
+  let beiMax = 0;
+  while (t < dauerMs) {
+    const f = t >= naechster ? haengerMs : taktMs;
+    if (t >= naechster) naechster += alleMs;
+    if (d.faktor === 2) beiMax += f;
+    d.messe(f);
+    t += f;
+  }
+  return { anteil: beiMax / t, ende: d.faktor };
+}
+
+describe('Einzelne Hänger (QA N1)', () => {
+  it.each([
+    [33.3, 200, 10_000],
+    [33.3, 200, 5_000],
+    [16.7, 200, 10_000],
+    [33.3, 700, 10_000],
+  ])('Takt %s ms, Hänger %s ms alle %s ms über 300 s → ≥ 90 %% der Zeit bei 2,0', (takt, haenger, alle) => {
+    const r = zeitBeiMax(takt, haenger, alle, 300_000);
+    expect(r.anteil).toBeGreaterThanOrEqual(0.9);
+    expect(r.ende).toBe(2);
+  });
+
+  it('anhaltend langsame Frames senken weiterhin', () => {
+    const d = new DynamischeAufloesung(1.5, 2, 33.3, 30);
+    frames(d, 45, 30);
+    expect(d.faktor).toBe(1.75);
+  });
+
+  it('Sperre klingt in ruhigen Phasen ab', () => {
+    const d = new DynamischeAufloesung(1.5, 2, 33.3, 10);
+    // mehrfach pendeln → Sperrdauer wächst
+    for (let i = 0; i < 4; i++) {
+      frames(d, 60, 10);
+      frames(d, 30, 10 * 40);
+    }
+    expect(d.faktor).toBe(2);
+    // lange ruhige Phase (keine Änderung) …
+    frames(d, 30, 10 * 20);
+    // … danach ist die Sperre nach einem erneuten Pendeln wieder kurz (Start: 2 Stichproben)
+    frames(d, 60, 10);
+    frames(d, 30, 10 * 3);
+    expect(d.faktor).toBe(2);
+  });
+});
+
 describe('Software-Renderer', () => {
   it.each([
     ['ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)', true],

@@ -251,7 +251,10 @@ class WerkstattViewThree implements WerkstattViewDebug {
     const ziel = add(e, forwardFromYawPitch(this.pose.yaw, this.pose.pitch));
     this.kamera.lookAt(ziel[0], ziel[1], ziel[2]);
 
-    if (this.dyn?.messe(dt)) this.groesseAnpassen();
+    // Nur echte Frames messen: Während Kontextverlust oder Shader-Übersetzung wird nicht gezeichnet, die leeren
+    // Durchläufe sind schnell und würden die Auflösung fälschlich heben (QA 018 N2); danach folgt pause().
+    const zeichnet = this.shaderBereit && !this.verloren;
+    if (zeichnet && this.dyn?.messe(dt)) this.groesseAnpassen();
 
     let gezeichnet = false;
     if (this.shaderBereit && !this.verloren && !this.renderer.getContext().isContextLost()) {
