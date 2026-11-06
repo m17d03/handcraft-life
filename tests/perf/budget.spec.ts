@@ -36,8 +36,25 @@ declare global {
     __view?: WerkstattViewDebug;
     __spiel?: SpielDebug;
     /** Sammler der Budget-Prüfung (Init-Skript `budgetSammler`). */
-    __budget?: { ansicht: string; proben: number; dc: number; tri: number; texMB: number; compressedTexImage2D: number };
+    __budget?: BudgetSammlung;
   }
+}
+
+/**
+ * Sammlung in der Seite. `ticks`/`maxLueckeMs`: alle rAF-Durchläufe der laufenden Ansicht und die längste Lücke
+ * dazwischen (auch ohne `__perf`) – zeigt im Abbruchfall, ob die Seite noch zeichnet und wie langsam.
+ */
+interface BudgetSammlung {
+  ansicht: string;
+  proben: number;
+  dc: number;
+  tri: number;
+  texMB: number;
+  compressedTexImage2D: number;
+  ticks: number;
+  maxLueckeMs: number;
+  /** Frames laut `__perf()` (letzter Wert in der Ansicht) */
+  perfFrames: number;
 }
 
 const SPIEL = './spiel/?debug=1&saat=7&test=1&dpr=1';
@@ -103,8 +120,6 @@ async function mitte(page: Page, sel: string): Promise<{ x: number; y: number; w
 }
 
 const zustand = (page: Page) => page.evaluate(() => window.__spiel?.zustand() ?? null);
-const ui = (page: Page) => page.evaluate(() => window.__spiel?.ui() ?? null);
-const phase = (page: Page) => page.evaluate(() => window.__spiel?.zustand().arbeit?.phase ?? null);
 
 /** Sägt `anzahl` Züge auf der Führungsspur, links „Abfall stützen“ gehalten. */
 async function saegen(page: Page, anzahl: number): Promise<void> {
@@ -139,6 +154,11 @@ interface Ansicht {
   hinweis: string;
   t0: number;
   dauerMs: number;
+  /** rAF-Durchläufe und längste Lücke (ms) in der Ansicht – Diagnose */
+  ticks: number;
+  maxLueckeMs: number;
+  /** Ansicht vor dem Ende abgebrochen (Werte = Teilmessung bis zum Abbruch) */
+  abgebrochen: boolean;
 }
 
 const neueAnsicht = (name: string): Ansicht => ({
@@ -154,6 +174,9 @@ const neueAnsicht = (name: string): Ansicht => ({
   hinweis: '',
   t0: 0,
   dauerMs: 0,
+  ticks: 0,
+  maxLueckeMs: 0,
+  abgebrochen: false,
 });
 
 /** Höchster Texturspeicher (Emulation) und letzter Snapshot über die ganze Runde. */
@@ -166,15 +189,29 @@ const gesamt: { texturMBEmulation: number; letzter: PerfSnapshot | null } = { te
  * `compressedTexImage2D`-Aufrufe (echte komprimierte Bytes → ASTC-Korrektur unten wäre falsch).
  */
 function budgetSammler(): void {
-  const b = { ansicht: '', proben: 0, dc: 0, tri: 0, texMB: 0, compressedTexImage2D: 0 };
+  const b: BudgetSammlung = { ansicht: '', proben: 0, dc: 0, tri: 0, texMB: 0, compressedTexImage2D: 0, ticks: 0, maxLueckeMs: 0, perfFrames: 0 };
   window.__budget = b;
-  const tick = (): void => {
+  let letzter = 0;
+  let gemeldet = 0;
+  const tick = (jetzt: number): void => {
     const s = b.ansicht ? window.__perf?.() : undefined;
+    if (b.ansicht) {
+      b.ticks++;
+      if (letzter > 0) b.maxLueckeMs = Math.max(b.maxLueckeMs, jetzt - letzter);
+      b.perfFrames = s?.frames ?? -1;
+    }
+    letzter = jetzt;
     if (s && s.frames > 0) {
       b.proben++;
       b.dc = Math.max(b.dc, s.drawCalls);
       b.tri = Math.max(b.tri, s.triangles);
       b.texMB = Math.max(b.texMB, s.textureMemoryMB);
+    }
+    // Lebenszeichen für die Abbruch-Diagnose (höchstens alle 2 s; Konsole erreicht den Test auch ohne Rundreise)
+    if (jetzt - gemeldet > 2000) {
+      gemeldet = jetzt;
+      const z = window.__spiel?.zustand();
+      console.debug(`[budget] ${JSON.stringify({ ...b, phase: z?.arbeit?.phase ?? null, zuege: z?.arbeit?.zuege.length ?? null, modus: document.querySelector('.hud')?.getAttribute('data-modus') ?? null })}`);
     }
     requestAnimationFrame(tick);
   };
@@ -205,6 +242,9 @@ async function beginne(page: Page, a: Ansicht): Promise<void> {
     b.proben = 0;
     b.dc = 0;
     b.tri = 0;
+    b.ticks = 0;
+    b.maxLueckeMs = 0;
+    b.perfFrames = 0;
   }, a.name);
 }
 
@@ -221,6 +261,8 @@ async function beende(page: Page, a: Ansicht): Promise<void> {
     a.proben = r.b.proben;
     a.drawCallsMax = r.b.dc;
     a.dreieckeMax = r.b.tri;
+    a.ticks = r.b.ticks;
+    a.maxLueckeMs = r.b.maxLueckeMs;
     gesamt.texturMBEmulation = Math.max(gesamt.texturMBEmulation, r.b.texMB);
   }
   if (r.s) {
@@ -256,8 +298,9 @@ async function rundumUmsehen(page: Page): Promise<number> {
         sende('move', start + richtung * 60 * i);
         await frame();
       }
+      // Loslassen an der Stelle der letzten Bewegung dreht nicht – kein eigener Frame (spart in WebKit ohne GPU
+      // ein Viertel der Umsehen-Frames à ~2 s, CI 42288369323); jede Blickrichtung bleibt gemessen.
       sende('up', start + richtung * 180);
-      await frame();
     };
     let gedreht = 0;
     let vorher = yaw();
@@ -310,16 +353,49 @@ function glbKtx2(b: Buffer): NonNullable<ReturnType<typeof ktx2Kopf>>[] {
 
 // ------------------------------------------------------------------ Standardrunde
 
+/**
+ * Taste in der Seite drücken, sobald sie sichtbar und frei ist (Prüfung je Frame in der Seite): Zeiger ab/auf und
+ * `click` wie ein Fingertipp. Eine Rundreise statt Playwright-`tap()` mit Stabilitätsprüfung über mehrere Frames –
+ * mit Software-GPU (WebKit: 1,5–2,5 s je Frame) kostete jeder `tap()` samt `expect.poll` 14–20 s (CI 42264293200).
+ */
+async function druecke(page: Page, sel: string, text?: string): Promise<void> {
+  const fehler = await page.evaluate(
+    async ({ sel, text, frist }) => {
+      const frame = (): Promise<void> => new Promise((r) => { requestAnimationFrame(() => { r(); }); });
+      const ende = performance.now() + frist;
+      for (;;) {
+        const b = [...document.querySelectorAll<HTMLButtonElement>(sel)].find(
+          (e) => (text === undefined || e.textContent.trim() === text) && !e.disabled && e.getClientRects().length > 0 && e.checkVisibility(),
+        );
+        if (b) {
+          const r = b.getBoundingClientRect();
+          const o = { pointerId: 4, pointerType: 'touch', isPrimary: false, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, bubbles: true, cancelable: true };
+          b.dispatchEvent(new PointerEvent('pointerdown', o));
+          b.dispatchEvent(new PointerEvent('pointerup', o));
+          b.click();
+          return null;
+        }
+        if (performance.now() > ende) return `Taste ${sel}${text === undefined ? '' : ` „${text}“`} nach ${String(frist / 1000)} s nicht sichtbar/frei`;
+        await frame();
+      }
+    },
+    { sel, text, frist: LANG.timeout },
+  );
+  if (fehler) throw new Error(fehler);
+}
+
+/** Warten auf einen Zustand – geprüft je Frame in der Seite (eine Rundreise statt `expect.poll`). */
+const warteAuf = async (page: Page, f: (a: string | null) => boolean, arg: string | null): Promise<void> => {
+  await page.waitForFunction(f, arg, { ...LANG, polling: 'raf' });
+};
+
 async function zurWerkbank(page: Page): Promise<void> {
-  const taste = page.locator('.hud-aktionstaste');
-  await expect(taste).toBeVisible(LANG);
-  await taste.tap();
-  await expect.poll(async () => (await ui(page))?.anDerBank, LANG).toBe(true);
-  await expect.poll(() => page.evaluate(() => window.__view?.zustand().fahrt), LANG).toBe(false);
+  await druecke(page, '.hud-aktionstaste');
+  await warteAuf(page, () => window.__spiel?.ui().anDerBank === true && window.__view?.zustand().fahrt === false, null);
 }
 
 /** Bezugsende wählen (das rechtwinklige), 600 mm messen, anreissen, „Sägen ›“ – wie der E2E-Ablauf. */
-async function bisZumSaegen(page: Page): Promise<void> {
+async function bisZumSaegen(page: Page, schritt: Schritte): Promise<void> {
   const z = await zustand(page);
   const ws = z?.inventar.werkstuecke.find((w) => w.id === z.arbeit?.werkstueckId);
   if (!ws) throw new Error('Kein Werkstück an der Werkbank');
@@ -327,12 +403,17 @@ async function bisZumSaegen(page: Page): Promise<void> {
   const ende = Math.abs(ws.enden.a.winkel_grad) <= Math.abs(ws.enden.b.winkel_grad) ? 'a' : 'b';
   const tipp = await page.evaluate((mm) => window.__view?.weltNachBildschirm(mm) ?? null, ende === 'a' ? L - 40 : 40);
   if (!tipp) throw new Error('Brettende nicht im Bild');
-  await tippen(page, tipp);
-  const pruefung = page.getByRole('dialog', { name: 'Brettende prüfen' });
-  await expect(pruefung).toBeVisible(LANG);
-  await pruefung.getByRole('button', { name: 'Anderes Ende' }).tap();
-  await pruefung.getByRole('button', { name: 'Von hier messen' }).tap();
-  await expect.poll(() => phase(page), LANG).toBe('messen');
+  const dialog = '[role="dialog"][aria-label="Brettende prüfen"]';
+  await schritt('Bezugsende antippen bis Dialog', async () => {
+    await tippen(page, tipp);
+    await warteAuf(page, (d) => d !== null && document.querySelector(d)?.checkVisibility() === true, dialog);
+  });
+  // „Anderes Ende“ öffnet die Prüfung des anderen Endes synchron, „Von hier messen“ wählt es (wie der E2E-Ablauf)
+  await schritt('Dialog: Anderes Ende', () => druecke(page, `${dialog} .hud-endpruefung-anderes`));
+  await schritt('Dialog: Von hier messen', async () => {
+    await druecke(page, `${dialog} .hud-endpruefung-wahl`);
+    await warteAuf(page, () => window.__spiel?.zustand().arbeit?.phase === 'messen', null);
+  });
 
   const soll = 600;
   const griff = await mitte(page, '.hud-massband-griff');
@@ -341,13 +422,19 @@ async function bisZumSaegen(page: Page): Promise<void> {
     const b = window.__view?.weltNachBildschirm(100);
     return a && b ? (b.x - a.x) / 100 : 0;
   });
-  await zeiger(page, ziehe(1, griff, { x: griff.x + soll * pxProMm, y: griff.y }, 12));
+  await schritt('Massband ziehen', () => zeiger(page, ziehe(1, griff, { x: griff.x + soll * pxProMm, y: griff.y }, 12)));
   // Genau 600 mm ist für die Messung unnötig (kostet in WebKit ohne GPU Minuten) – angerissen wird, wo der Griff steht.
-  await page.locator('.hud-anreissen').tap();
-  await expect.poll(() => phase(page), LANG).toBe('ansetzen');
-  await page.getByRole('button', { name: 'Sägen ›' }).tap();
-  await expect(page.locator('.hud')).toHaveAttribute('data-modus', 'werkbank-saegen', LANG);
+  await schritt('Anreissen', async () => {
+    await druecke(page, '.hud-anreissen');
+    await warteAuf(page, () => window.__spiel?.zustand().arbeit?.phase === 'ansetzen', null);
+  });
+  await schritt('„Sägen ›“ bis Sägen-Modus', async () => {
+    await druecke(page, '.hud button[data-aktion]', 'Sägen ›');
+    await warteAuf(page, () => document.querySelector('.hud')?.getAttribute('data-modus') === 'werkbank-saegen', null);
+  });
 }
+
+type Schritte = <T>(name: string, f: () => Promise<T>) => Promise<T>;
 
 // ------------------------------------------------------------------ Bericht
 
@@ -403,13 +490,34 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen)', async ({ page,
   page.on('pageerror', (e) => seitenFehler.push(e.message));
   await page.addInitScript(budgetSammler);
 
+  // Lebenszeichen der Seite (Init-Skript, alle ≥ 2 s): letzter Stand für die Abbruch-Diagnose
+  let lebenszeichen: { t: number; text: string } | null = null;
+  page.on('console', (m) => {
+    const text = m.text();
+    if (text.startsWith('[budget] ')) lebenszeichen = { t: Date.now(), text: text.slice(9) };
+  });
+
+  // Ablauf mit Zeit je Schritt (Bericht + Abbruchmeldung: wo die Zeit bleibt)
+  const ablauf: { name: string; ms: number }[] = [];
+  let laufend: { name: string; t0: number } | null = null;
+  const schritt = async <T,>(name: string, f: () => Promise<T>): Promise<T> => {
+    laufend = { name, t0: Date.now() };
+    const r = await f();
+    ablauf.push({ name, ms: Date.now() - laufend.t0 });
+    laufend = null;
+    return r;
+  };
+
   let abbruch: string | null = null;
   let assets = '?';
   let compressedUploads = 0;
   let komprimierteFormate: string[] = [];
-  try {
-    await page.goto(SPIEL);
-    await page.waitForFunction(() => ['ready', 'no-webgl2', 'error'].includes(document.body.dataset['state'] ?? ''), null, LANG);
+  let aktiv: Ansicht | null = null;
+  const runde = async (): Promise<void> => {
+    await schritt('laden bis spielbar', async () => {
+      await page.goto(SPIEL);
+      await page.waitForFunction(() => ['ready', 'no-webgl2', 'error'].includes(document.body.dataset['state'] ?? ''), null, LANG);
+    });
     spielbar = true;
     const state = await page.evaluate(() => document.body.dataset['state']);
     if (state !== 'ready') throw new Error(`Seite nicht spielbar: data-state=${String(state)}`);
@@ -420,26 +528,71 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen)', async ({ page,
 
     // 1) Erkunden: stehen, dann einmal rundum umsehen und genauso weit zurück (Blick wieder auf die Werkbank)
     await beginne(page, erkunden);
-    await page.waitForTimeout(1000);
-    const grad = await rundumUmsehen(page);
+    aktiv = erkunden;
+    await schritt('Erkunden: 1 s stehen', () => page.waitForTimeout(1000));
+    const grad = await schritt('Erkunden: rundum umsehen', () => rundumUmsehen(page));
     await beende(page, erkunden);
+    aktiv = null;
     erkunden.hinweis = grad > 0.1 ? `umgesehen ${f(grad)}° und zurück` : 'Umsehen ohne Wirkung';
 
     // 2) Werkbank bis zum Sägen, dann sägen (Messung während der Züge)
     const wegStart = Date.now();
-    await zurWerkbank(page);
-    await bisZumSaegen(page);
+    await schritt('zur Werkbank', () => zurWerkbank(page));
+    await bisZumSaegen(page, schritt);
     saegenA.hinweis = `Weg bis „Sägen“ ${f((Date.now() - wegStart) / 1000)} s`;
     await beginne(page, saegenA);
+    aktiv = saegenA;
     // 4 Züge (2 × 2). Ein ganzer Schnitt bis zur Ergebniskarte dauert mit Software-GPU (Frames 0,5–1,3 s) Minuten
     // und sprengt das 5-min-Ziel des CI-Schritts; die Ergebnis-Ansicht hat zudem weniger Dreiecke (gemessen 8 460).
-    await saegen(page, 2);
-    await saegen(page, 2);
+    await schritt('Sägen: Züge 1–2', () => saegen(page, 2));
+    await schritt('Sägen: Züge 3–4', () => saegen(page, 2));
     await beende(page, saegenA);
+    aktiv = null;
     saegenA.hinweis += `, ${String((await zustand(page))?.arbeit?.zuege.length ?? 0)} Züge`;
     compressedUploads = (await page.evaluate(() => window.__budget?.compressedTexImage2D)) ?? 0;
+  };
+
+  // Eigene Frist vor dem Test-Zeitlimit: Bei Überschreitung ist die Seite noch offen, die Teilmessung der laufenden
+  // Ansicht wird gelesen und der Bericht nennt Schritt, Zeiten und Frames (sonst nur „Test timeout“).
+  // PW_PERF_FRIST_MS: nur zum Prüfen der Abbruch-Diagnose (kürzere Frist erzwingen)
+  const frist = Number(process.env['PW_PERF_FRIST_MS'] ?? '0') || Math.max(60_000, test.info().timeout - 40_000);
+  let fristTimer: ReturnType<typeof setTimeout> | undefined;
+  const lauf = runde();
+  lauf.catch(() => undefined); // nach Fristablauf kann die Runde noch scheitern – nicht unbehandelt lassen
+  try {
+    await Promise.race([
+      lauf,
+      new Promise<never>((_, nein) => {
+        fristTimer = setTimeout(() => {
+          nein(new Error(`Frist der Runde (${f(frist / 1000)} s) überschritten`));
+        }, frist);
+      }),
+    ]);
   } catch (e) {
     abbruch = e instanceof Error ? e.message.split('\n')[0] ?? e.message : String(e);
+  } finally {
+    clearTimeout(fristTimer);
+  }
+  if (abbruch) {
+    const offen = laufend as { name: string; t0: number } | null;
+    const lz = lebenszeichen as { t: number; text: string } | null;
+    const teile = [
+      `in Schritt „${offen?.name ?? '?'}“${offen ? ` nach ${f((Date.now() - offen.t0) / 1000)} s` : ''}`,
+      `Laufzeit ${f((Date.now() - start) / 1000)} s`,
+      `Schritte: ${ablauf.map((a) => `${a.name} ${f(a.ms / 1000, 1)} s`).join(' · ') || '–'}`,
+      `letztes Lebenszeichen ${lz ? `vor ${f((Date.now() - lz.t) / 1000, 1)} s: ${lz.text}` : '–'}`,
+    ];
+    abbruch = `${abbruch} – ${teile.join('; ')}`;
+    // Teilmessung der laufenden Ansicht lesen (Seite noch offen, wenn die eigene Frist griff)
+    const a = aktiv as Ansicht | null;
+    if (a && !page.isClosed()) {
+      try {
+        await Promise.race([beende(page, a), new Promise((_, nein) => setTimeout(() => { nein(new Error('Zeitüberschreitung')); }, 15_000))]);
+        a.abgebrochen = true;
+      } catch (e) {
+        abbruch += `; Teilmessung „${a.name}“ nicht lesbar: ${e instanceof Error ? e.message.split('\n')[0] ?? '' : String(e)}`;
+      }
+    }
   }
 
   // ---------------------------------------------------------------- Auswertung
@@ -470,7 +623,8 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen)', async ({ page,
   if (assets !== 'modelle' && !abbruch) messfehler.push(`Assets = '${assets}' (Platzhalter statt Modelle aus Ticket 012)`);
   for (const a of ansichten) {
     if (!a.erreicht) continue;
-    if (a.proben === 0) messfehler.push(`${a.name}: kein gezeichneter Frame gemeldet (__perf() fehlt oder frames = 0 – vgl. Ticket 018)`);
+    const teil = a.abgebrochen ? ` (Ansicht abgebrochen nach ${f(a.dauerMs / 1000)} s: ${String(a.ticks)} rAF, längste Lücke ${f(a.maxLueckeMs)} ms)` : '';
+    if (a.proben === 0) messfehler.push(`${a.name}: kein gezeichneter Frame gemeldet (__perf() fehlt oder frames = 0 – vgl. Ticket 018)${teil}`);
     else if (a.drawCallsMax === 0 || a.dreieckeMax === 0)
       messfehler.push(`${a.name}: __perf() meldet ${String(a.drawCallsMax)} Draw Calls / ${String(a.dreieckeMax)} Dreiecke – Szene nicht gezeichnet oder GL-Zählhülle greift nicht (vgl. Ticket 018)`);
   }
@@ -512,7 +666,9 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen)', async ({ page,
     `| Zeit bis spielbar (Emulation) | ${s?.timeToPlayableMs == null ? '–' : `${f(s.timeToPlayableMs)} ms`} | – | – | Bericht |`,
     `| Übertragen laut __perf (vite preview, ungzipped) | ${s?.transferredKB == null ? '–' : `${f(s.transferredKB / 1024, 2)} MB`} (roh ${f(downloadRohMB, 2)} MB) | – | – | Gegenprobe |`,
     '',
-    `Hinweise: ${ansichten.map((a) => `${a.name}: ${a.erreicht ? `${String(a.proben)} Proben in ${f(a.dauerMs / 1000)} s` : 'nicht gemessen'}${a.hinweis ? `, ${a.hinweis}` : ''}`).join(' · ')}`,
+    `Hinweise: ${ansichten.map((a) => `${a.name}: ${a.erreicht ? `${String(a.proben)} Proben (${String(a.ticks)} rAF, längste Lücke ${f(a.maxLueckeMs)} ms) in ${f(a.dauerMs / 1000)} s${a.abgebrochen ? ' – abgebrochen' : ''}` : 'nicht gemessen'}${a.hinweis ? `, ${a.hinweis}` : ''}`).join(' · ')}`,
+    '',
+    `Ablauf (s): ${ablauf.map((a) => `${a.name} ${f(a.ms / 1000, 1)}`).join(' · ') || '–'}`,
     '',
     `Texturen: ${texHinweis}. Komprimierte Formate im Browser: ${komprimierteFormate.length > 0 ? komprimierteFormate.join(', ') : 'keine'}.`,
     `Seitenfehler: ${seitenFehler.length > 0 ? seitenFehler.slice(0, 5).join(' | ') : 'keine'}. Kontextverluste: ${String(s?.contextLostCount ?? '–')}.`,
@@ -528,11 +684,18 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen)', async ({ page,
   ];
   const text = `${zeilen.join('\n')}\n`;
   console.log(`\n${text}`);
+  if (process.env['GITHUB_ACTIONS']) {
+    // Annotationen am CI-Lauf (öffentlich lesbar, anders als Log und Zusammenfassung): Ablauf, Frames, Messfehler
+    const esc = (t: string): string => t.replace(/%/g, '%25').replace(/\r/g, '').replace(/\n/g, '%0A');
+    const kern = zeilen.filter((z) => /^(Hinweise|Ablauf|\| (Draw|Dreiecke im|Frame-Zeit|fps|Zeit bis|Download))/.test(z));
+    console.log(`::notice title=Performance-Budget ${gesamtStatus}::${esc([`Laufzeit ${f((Date.now() - start) / 1000)} s, ${browserName} ${browserVersion}`, ...kern].join('\n'))}`);
+    if (messfehler.length > 0) console.log(`::error title=Performance-Budget Messfehler::${esc(messfehler.join('\n'))}`);
+  }
   mkdirSync(BERICHT, { recursive: true });
   writeFileSync(join(BERICHT, 'budget.md'), text);
   writeFileSync(
     join(BERICHT, 'budget.json'),
-    `${JSON.stringify({ status: st, messfehler, ansichten, downloadMB, downloadDateien: download.length, texturMBEmulation: texEmu, texturMBIphone: texIphone, ktx2Bilder: ktx2.length, letzterSnapshot: s }, null, 2)}\n`,
+    `${JSON.stringify({ status: st, messfehler, ansichten, ablauf, downloadMB, downloadDateien: download.length, texturMBEmulation: texEmu, texturMBIphone: texIphone, ktx2Bilder: ktx2.length, letzterSnapshot: s }, null, 2)}\n`,
   );
   for (const [k, v] of Object.entries(st)) if (v === 'warnung') test.info().annotations.push({ type: 'warning', description: `Ziel überschritten: ${k}` });
 

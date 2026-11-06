@@ -24,7 +24,9 @@ export default defineConfig({
   retries: 0, // Grenzwerte sind deterministisch; ein zweiter Versuch verdeckt nur Fehler
   forbidOnly: ci,
   reporter: 'list',
-  timeout: 270_000,
+  // WebKit ohne GPU: 2,0–2,4 s je Frame unter CI-Last (Läufe 42264293200, 42288369323), die Runde braucht
+  // ~110 Frames (Umsehen, Sägen) → 270 s reichten auf langsamen Runnern nicht (main 42257762328).
+  timeout: 360_000,
   use: {
     baseURL: `http://localhost:${String(port)}`,
     trace: 'retain-on-failure',

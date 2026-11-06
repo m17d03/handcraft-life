@@ -56,11 +56,11 @@ jobs:
         run: npm run test:e2e
       # Ticket 015: Performance-Budget in WebKit (iPhone 15 quer, tests/perf/budget.spec.ts). Läuft auch nach roten
       # E2E-Tests, damit die Messwerte sichtbar sind. Rot bei harter Grenze (Draw Calls, Dreiecke, Texturspeicher,
-      # Download) und bei Messfehler (z. B. 0 Draw Calls = Szene nicht gezeichnet). Ziel: < 5 min.
+      # Download) und bei Messfehler (z. B. 0 Draw Calls = Szene nicht gezeichnet). Test-Zeitlimit 6 min (budget.config.ts).
       - name: Performance-Budget (WebKit)
         id: perf
         if: ${{ !cancelled() && steps.e2e.outcome != 'skipped' }}
-        timeout-minutes: 6
+        timeout-minutes: 8
         run: npx playwright test -c tests/perf/budget.config.ts
       - name: Performance-Bericht in die Zusammenfassung
         if: ${{ !cancelled() && steps.perf.outcome != 'skipped' }}
