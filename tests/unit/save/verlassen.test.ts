@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IndexedDbAblage, SpeicherAblage, Spielstand, type Ablage } from '../../../src/core/save';
 import { neuerSpielzustand, type Spielzustand } from '../../../src/core/zustand';
 import { katalog } from '../core/hilfen';
+import { idbAttrappe, keyRangeEinsetzen } from './idb-attrappe';
 
 const stand = (geld: number): Spielzustand => {
   const z = neuerSpielzustand(katalog, 1);
@@ -43,11 +44,13 @@ class IdbAehnlich extends SpeicherAblage {
 }
 
 beforeEach(() => {
+  keyRangeEinsetzen();
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-01T10:00:00.000Z'));
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('F7 – Spielstand: neuester Stand geht sofort in die Ablage', () => {
@@ -156,126 +159,6 @@ describe('F7 – Spielstand: neuester Stand geht sofort in die Ablage', () => {
 });
 
 // ------------------------------------------------------------------ IndexedDbAblage mit IDB-Attrappe
-
-interface AttrappenOptionen {
-  /** Läuft als Mikrotask direkt nach dem Öffnen der Verbindung (vor wartenden Fortsetzungen). */
-  nachOeffnen?: () => void;
-  /** Erste Verbindung meldet beim ersten Schreiben "connection is closing". */
-  ersteSchliesst?: boolean;
-  /** Lesen der Sicherungsschlüssel beim Öffnen scheitert (Rückfall auf getAllKeys in der Transaktion). */
-  schluesselFehler?: boolean;
-}
-
-/**
- * Minimale IndexedDB-Attrappe: Transaktionen werden beim Anlegen protokolliert und in Anlegereihenfolge
- * wirksam (wie IndexedDB bei überlappenden readwrite-Stores).
- */
-function idbAttrappe(o: AttrappenOptionen = {}) {
-  const daten = new Map<string, unknown>();
-  const sicherung = new Map<string, unknown>();
-  const protokoll: string[] = [];
-  /** Alle Anfragen in Reihenfolge (put/delete je Store, commit). */
-  const anfragen: string[] = [];
-  /** Seitenabbau: Transaktionen, die danach noch Anfragen absetzen, werden ganz verworfen (wie Navigation weg). */
-  const seite = { beendet: false, verworfen: 0 };
-  let verbindungen = 0;
-  let kette = Promise.resolve();
-  const fabrik = {
-    open: () => {
-      const nr = verbindungen++;
-      let erstesSchreiben = true;
-      const db: Record<string, unknown> = {
-        objectStoreNames: { contains: () => true },
-        close: vi.fn(),
-        transaction: (_stores: unknown, modus?: string) => {
-          if (o.ersteSchliesst === true && nr === 0 && erstesSchreiben && modus === 'readwrite') {
-            erstesSchreiben = false;
-            const e = new Error('The database connection is closing.');
-            e.name = 'InvalidStateError';
-            throw e;
-          }
-          const ops: (() => void)[] = [];
-          const tx: Record<string, unknown> = {};
-          let spaet = false;
-          let committed = false;
-          const anfrage = (text: string): void => {
-            if (committed) {
-              const e = new Error('Transaktion bereits abgeschlossen');
-              e.name = 'TransactionInactiveError';
-              throw e;
-            }
-            if (seite.beendet) spaet = true;
-            anfragen.push(text);
-          };
-          tx.commit = () => {
-            committed = true;
-            anfragen.push('commit');
-          };
-          const store = (name: string) => {
-            const ziel = name === 'spielstand' ? daten : sicherung;
-            return {
-              put: (wert: unknown, schluessel: string) => {
-                anfrage(`put ${name} ${schluessel}`);
-                if (name === 'spielstand') protokoll.push(`angelegt:${String(wert)}`);
-                ops.push(() => ziel.set(schluessel, wert));
-                return {};
-              },
-              delete: (schluessel: string) => {
-                anfrage(`delete ${name} ${schluessel}`);
-                ops.push(() => ziel.delete(schluessel));
-                return {};
-              },
-              getAllKeys: () => {
-                if (o.schluesselFehler === true && modus !== 'readwrite') throw new Error('getAllKeys gestört (Test)');
-                const r: Record<string, unknown> = { result: [...ziel.keys()] };
-                queueMicrotask(() => {
-                  (r.onsuccess as (() => void) | undefined)?.();
-                });
-                return r;
-              },
-              get: (schluessel: string) => {
-                const r: Record<string, unknown> = { result: ziel.get(schluessel) };
-                queueMicrotask(() => {
-                  (r.onsuccess as () => void)();
-                });
-                return r;
-              },
-            };
-          };
-          tx.objectStore = store;
-          // Wirksam in Anlegereihenfolge, nach allen Anfragen dieser Transaktion
-          kette = kette.then(
-            () =>
-              new Promise<void>((ok) => {
-                setTimeout(() => {
-                  if (spaet) {
-                    seite.verworfen += 1;
-                    const e = new Error('Seite abgebaut: Transaktion verworfen (Test)');
-                    e.name = 'AbortError';
-                    (tx as { error?: Error }).error = e;
-                    (tx.onabort as (() => void) | undefined)?.();
-                    ok();
-                    return;
-                  }
-                  for (const op of ops) op();
-                  (tx.oncomplete as (() => void) | undefined)?.();
-                  ok();
-                }, 0);
-              }),
-          );
-          return tx;
-        },
-      };
-      const r: Record<string, unknown> = { result: db };
-      queueMicrotask(() => {
-        (r.onsuccess as () => void)();
-        if (o.nachOeffnen) queueMicrotask(o.nachOeffnen);
-      });
-      return r;
-    },
-  };
-  return { fabrik: fabrik as unknown as IDBFactory, daten, sicherung, protokoll, anfragen, seite };
-}
 
 describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihenfolge', () => {
   it('bei offener Verbindung wird die Transaktion synchron im Aufruf angelegt', async () => {
@@ -390,7 +273,7 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
     const keys = [...sicherung.keys()].sort();
     expect(keys.filter((k) => k.startsWith('vor-migration|'))).toHaveLength(1);
     const auto = keys.filter((k) => k.startsWith('autosave|'));
-    expect(auto.map((k) => Number(k.split('|')[1]))).toEqual([5, 6, 7]);
+    expect(auto.map((k) => Number.parseInt(k.split('|')[1] ?? '', 10))).toEqual([5, 6, 7]);
     expect(ablage.schreibStatistik.sofort).toBe(7);
   });
 
@@ -405,7 +288,7 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
     expect(ablage.schreibStatistik.sofort).toBe(0);
   });
 
-  it('abgebrochene Transaktion: mitgeführte Schlüssel verworfen, danach wieder gelesen und synchron', async () => {
+  it('abgebrochene Transaktion: danach weiter synchron, aktuell bleibt beim älteren Stand bis zum nächsten Erfolg', async () => {
     const { fabrik, daten, seite } = idbAttrappe();
     const ablage = new IndexedDbAblage(fabrik);
     const p1 = ablage.schreiben('"a"', 'z1');
@@ -418,7 +301,7 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
     expect(await p2).toBeInstanceOf(Error);
     seite.beendet = false;
     expect(daten.get('aktuell')).toBe('"a"');
-    const p3 = ablage.schreiben('"c"', 'z3'); // Rückfall (Schlüssel unbekannt), danach neu gelesen
+    const p3 = ablage.schreiben('"c"', 'z3');
     await vi.advanceTimersByTimeAsync(10);
     await p3;
     const vorher = ablage.schreibStatistik.sofort;
