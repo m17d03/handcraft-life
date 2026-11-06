@@ -120,8 +120,6 @@ async function mitte(page: Page, sel: string): Promise<{ x: number; y: number; w
 }
 
 const zustand = (page: Page) => page.evaluate(() => window.__spiel?.zustand() ?? null);
-const ui = (page: Page) => page.evaluate(() => window.__spiel?.ui() ?? null);
-const phase = (page: Page) => page.evaluate(() => window.__spiel?.zustand().arbeit?.phase ?? null);
 
 /** Sägt `anzahl` Züge auf der Führungsspur, links „Abfall stützen“ gehalten. */
 async function saegen(page: Page, anzahl: number): Promise<void> {
@@ -354,12 +352,45 @@ function glbKtx2(b: Buffer): NonNullable<ReturnType<typeof ktx2Kopf>>[] {
 
 // ------------------------------------------------------------------ Standardrunde
 
+/**
+ * Taste in der Seite drücken, sobald sie sichtbar und frei ist (Prüfung je Frame in der Seite): Zeiger ab/auf und
+ * `click` wie ein Fingertipp. Eine Rundreise statt Playwright-`tap()` mit Stabilitätsprüfung über mehrere Frames –
+ * mit Software-GPU (WebKit: 1,5–2,5 s je Frame) kostete jeder `tap()` samt `expect.poll` 14–20 s (CI 42264293200).
+ */
+async function druecke(page: Page, sel: string, text?: string): Promise<void> {
+  const fehler = await page.evaluate(
+    async ({ sel, text, frist }) => {
+      const frame = (): Promise<void> => new Promise((r) => { requestAnimationFrame(() => { r(); }); });
+      const ende = performance.now() + frist;
+      for (;;) {
+        const b = [...document.querySelectorAll<HTMLButtonElement>(sel)].find(
+          (e) => (text === undefined || e.textContent.trim() === text) && !e.disabled && e.getClientRects().length > 0 && e.checkVisibility(),
+        );
+        if (b) {
+          const r = b.getBoundingClientRect();
+          const o = { pointerId: 4, pointerType: 'touch', isPrimary: false, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, bubbles: true, cancelable: true };
+          b.dispatchEvent(new PointerEvent('pointerdown', o));
+          b.dispatchEvent(new PointerEvent('pointerup', o));
+          b.click();
+          return null;
+        }
+        if (performance.now() > ende) return `Taste ${sel}${text === undefined ? '' : ` „${text}“`} nach ${String(frist / 1000)} s nicht sichtbar/frei`;
+        await frame();
+      }
+    },
+    { sel, text, frist: LANG.timeout },
+  );
+  if (fehler) throw new Error(fehler);
+}
+
+/** Warten auf einen Zustand – geprüft je Frame in der Seite (eine Rundreise statt `expect.poll`). */
+const warteAuf = async (page: Page, f: (a: string | null) => boolean, arg: string | null): Promise<void> => {
+  await page.waitForFunction(f, arg, { ...LANG, polling: 'raf' });
+};
+
 async function zurWerkbank(page: Page): Promise<void> {
-  const taste = page.locator('.hud-aktionstaste');
-  await expect(taste).toBeVisible(LANG);
-  await taste.tap();
-  await expect.poll(async () => (await ui(page))?.anDerBank, LANG).toBe(true);
-  await expect.poll(() => page.evaluate(() => window.__view?.zustand().fahrt), LANG).toBe(false);
+  await druecke(page, '.hud-aktionstaste');
+  await warteAuf(page, () => window.__spiel?.ui().anDerBank === true && window.__view?.zustand().fahrt === false, null);
 }
 
 /** Bezugsende wählen (das rechtwinklige), 600 mm messen, anreissen, „Sägen ›“ – wie der E2E-Ablauf. */
@@ -371,15 +402,16 @@ async function bisZumSaegen(page: Page, schritt: Schritte): Promise<void> {
   const ende = Math.abs(ws.enden.a.winkel_grad) <= Math.abs(ws.enden.b.winkel_grad) ? 'a' : 'b';
   const tipp = await page.evaluate((mm) => window.__view?.weltNachBildschirm(mm) ?? null, ende === 'a' ? L - 40 : 40);
   if (!tipp) throw new Error('Brettende nicht im Bild');
-  const pruefung = page.getByRole('dialog', { name: 'Brettende prüfen' });
+  const dialog = '[role="dialog"][aria-label="Brettende prüfen"]';
   await schritt('Bezugsende antippen bis Dialog', async () => {
     await tippen(page, tipp);
-    await expect(pruefung).toBeVisible(LANG);
+    await warteAuf(page, (d) => d !== null && document.querySelector(d)?.checkVisibility() === true, dialog);
   });
-  await schritt('Dialog: Anderes Ende', () => pruefung.getByRole('button', { name: 'Anderes Ende' }).tap());
+  // „Anderes Ende“ öffnet die Prüfung des anderen Endes synchron, „Von hier messen“ wählt es (wie der E2E-Ablauf)
+  await schritt('Dialog: Anderes Ende', () => druecke(page, `${dialog} .hud-endpruefung-anderes`));
   await schritt('Dialog: Von hier messen', async () => {
-    await pruefung.getByRole('button', { name: 'Von hier messen' }).tap();
-    await expect.poll(() => phase(page), LANG).toBe('messen');
+    await druecke(page, `${dialog} .hud-endpruefung-wahl`);
+    await warteAuf(page, () => window.__spiel?.zustand().arbeit?.phase === 'messen', null);
   });
 
   const soll = 600;
@@ -392,12 +424,12 @@ async function bisZumSaegen(page: Page, schritt: Schritte): Promise<void> {
   await schritt('Massband ziehen', () => zeiger(page, ziehe(1, griff, { x: griff.x + soll * pxProMm, y: griff.y }, 12)));
   // Genau 600 mm ist für die Messung unnötig (kostet in WebKit ohne GPU Minuten) – angerissen wird, wo der Griff steht.
   await schritt('Anreissen', async () => {
-    await page.locator('.hud-anreissen').tap();
-    await expect.poll(() => phase(page), LANG).toBe('ansetzen');
+    await druecke(page, '.hud-anreissen');
+    await warteAuf(page, () => window.__spiel?.zustand().arbeit?.phase === 'ansetzen', null);
   });
   await schritt('„Sägen ›“ bis Sägen-Modus', async () => {
-    await page.getByRole('button', { name: 'Sägen ›' }).tap();
-    await expect(page.locator('.hud')).toHaveAttribute('data-modus', 'werkbank-saegen', LANG);
+    await druecke(page, '.hud button[data-aktion]', 'Sägen ›');
+    await warteAuf(page, () => document.querySelector('.hud')?.getAttribute('data-modus') === 'werkbank-saegen', null);
   });
 }
 
