@@ -51,3 +51,17 @@ describe('FpsMeter Hänger', () => {
     expect(m.worstFrameMs).toBe(1500);
   });
 });
+
+describe('FpsMeter bei seltenen Frames', () => {
+  it('Frames alle 3 s ergeben ≈ 0,33 fps statt 0', () => {
+    const m = new FpsMeter(1000);
+    m.tick(0);
+    m.tick(3000);
+    expect(m.fps).toBeCloseTo(1 / 3, 3);
+  });
+  it('ohne bekannten Abstand bleibt 0', () => {
+    const m = new FpsMeter(1000);
+    m.tick(0);
+    expect(m.fps).toBe(0);
+  });
+});

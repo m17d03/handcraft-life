@@ -116,7 +116,7 @@ export function installDebugOverlay(root: HTMLElement = document.body, opt: Debu
     meter.tick(now);
     if (now - lastRender > 250) {
       lastRender = now;
-      stats.textContent = `fps ${meter.fps.toFixed(0)} · max ${meter.worstFrameMs.toFixed(0)} ms · ${info()}`;
+      stats.textContent = `fps ${fpsText(meter.fps)} · max ${meter.worstFrameMs.toFixed(0)} ms · ${info()}`;
     }
     raf = requestAnimationFrame(loop);
   };
@@ -146,4 +146,10 @@ export function debugOverlaySchalten(an: boolean, root: HTMLElement = document.b
 /** true, wenn das Overlay eingebunden und sichtbar ist. */
 export function debugOverlaySichtbar(): boolean {
   return overlay !== null && !overlay.box.hidden;
+}
+
+/** fps für die Anzeige: ganzzahlig ab 1, darunter mit einer Nachkommastelle (0,3), nie „0“ bei laufenden Frames. */
+export function fpsText(fps: number): string {
+  if (fps >= 1 || fps <= 0) return fps.toFixed(0);
+  return Math.max(0.1, fps).toFixed(1).replace('.', ',');
 }
