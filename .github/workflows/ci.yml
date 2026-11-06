@@ -28,7 +28,15 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      - run: npx playwright install --with-deps webkit
+      # Installation hing zweimal 40 min (apt/Download auf dem Runner) → eigene Zeitgrenze und bis zu 3 Versuche.
+      - name: WebKit installieren
+        timeout-minutes: 12
+        run: |
+          for versuch in 1 2 3; do
+            timeout 240 npx playwright install --with-deps webkit && exit 0
+            echo "Versuch $versuch fehlgeschlagen, neuer Versuch in 15 s"; sleep 15
+          done
+          exit 1
       - id: e2e
         run: npm run test:e2e
       # Ticket 015: Performance-Budget in WebKit (iPhone 15 quer, tests/perf/budget.spec.ts). Läuft auch nach roten
