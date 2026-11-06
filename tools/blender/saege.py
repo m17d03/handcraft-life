@@ -229,6 +229,9 @@ def main():
 
     karten_blatt = hcl.karten(kb, ao_min=0.35)
     karten_griff = hcl.karten(kg, ao_min=0.2)
+    # Texturspeicher-Ziel < 120 MB (QA 019): Blatt 1024×256 (Zähne sind Geometrie), Griff-ORM 512²
+    karten_blatt = {k: hcl.halbiere(v) for k, v in karten_blatt.items()}
+    karten_griff['orm'] = hcl.halbiere(karten_griff['orm'])
     man = {
         'modell': MODELL,
         'materialien': {
@@ -255,7 +258,7 @@ def main():
         # Säge auf der Seite liegend, leicht gedreht; Kamera nah am Griff
         wurzel.rotation_euler = (0, math.radians(90), math.radians(-25))
         wurzel.location = (0, 0, 0.0005 + 0.012)
-        hcl.vorschau('saege-nah', 'Fuchsschwanz – Griff, Schrauben, Zahnung · saege.glb', (0.16, -0.12, 0.2), (0.03, 0.06, 0.0), linse=50)
+        hcl.vorschau('saege-nah', 'Fuchsschwanz nah · saege.glb', (0.16, -0.12, 0.2), (0.03, 0.06, 0.0), linse=50)
         bpy.data.objects['Kamera'].location = (0.05, -0.42, 0.62)
         z = mathutils.Vector((0.05, 0.25, 0.0)) - bpy.data.objects['Kamera'].location
         bpy.data.objects['Kamera'].rotation_euler = z.to_track_quat('-Z', 'Y').to_euler()

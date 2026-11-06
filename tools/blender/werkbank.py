@@ -180,7 +180,7 @@ def main():
     ao = 0.3 + 0.7 * np.clip(ao, 0, 1)
     a8 = np.ones(ao.shape + (4,), np.float32)
     a8[..., 0] = a8[..., 1] = a8[..., 2] = ao
-    karte_ao = {'ao': hcl.u8(a8)}
+    karte_ao = {'ao': hcl.halbiere(hcl.u8(a8))}  # 512² reicht für AO (Texturspeicher, QA 019)
     eintrag = hcl.speichere_karten(MODELL, 'werkbank', karte_ao)
     for o in obs:
         o.data.uv_layers.active = o.data.uv_layers['UVMap']

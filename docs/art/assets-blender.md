@@ -43,13 +43,16 @@ Spielscreenshot aus Software-Rendering, fps dort nicht aussagekräftig.
 
 | Datei | Dreiecke vorher → nachher (Budget) | Texturen nachher | Grösse vorher → nachher |
 |---|---|---|---|
-| saege.glb | 3 356 → 3 784 (≤ 5 000) | Blatt 2048×512 Farbe/ORM; Griff 1024² Farbe/Normal/ORM | 568 → 755 kB |
-| massband.glb | 2 440 → 2 124 (≤ 3 000) | Gehäuse+Haken 1024² Farbe/Normal/ORM; Band 2048×256 (Skala unverändert) | 209 → 1 077 kB |
+| saege.glb | 3 356 → 3 784 (≤ 5 000) | Blatt 1024×256 Farbe/ORM; Griff 1024² Farbe/Normal, 512² ORM | 568 → 644 kB |
+| massband.glb | 2 440 → 2 124 (≤ 3 000) | Gehäuse+Haken 512² Farbe/Normal/ORM; Band 2048×256 (Skala unverändert) | 209 → 416 kB |
 | bleistift.glb | 360 → 238 (≤ 500) | 512² Farbe/ORM | 18 → 28 kB |
-| werkbank.glb | 1 104 → 1 784 (≤ 4 000) | Eiche 1024² Farbe/Normal/ORM (kachelnd, TEXCOORD_0) + AO 1024² (TEXCOORD_1) | 542 → 720 kB |
+| werkbank.glb | 1 104 → 1 784 (≤ 4 000) | Eiche 1024² Farbe/Normal/ORM (kachelnd, TEXCOORD_0) + AO 512² (TEXCOORD_1) | 542 → 647 kB |
 
-Je Modell ≤ 2 Materialien, Draw Calls unverändert (Säge 2, Massband 3, Bleistift 1, Werkbank 4).
-`public/assets/` gesamt **4,83 MB** (vorher 3,61 MB; Grenze 6 MB).
+Je Modell ≤ 2 Materialien, alle `doubleSided = false`, Tangenten exportiert; Draw Calls unverändert
+(Säge 2, Massband 3, Bleistift 1, Werkbank 4). `public/assets/` gesamt **4,00 MB** (vorher 3,61 MB; Grenze 6 MB).
+Im Spiel (Chromium, `__perf()`): Texturspeicher **114,7 MB** (Ziel < 120), 19 Draw Calls, 9 060 Dreiecke.
+Gebacken wird in voller Auflösung, verkleinert wird danach (`hcl.halbiere`, Normal-Maps neu normiert).
+Reproduzierbar: Indizes in `optimiere.mjs` kanonisch sortiert; saege.glb über drei Läufe sha256-gleich.
 
 ### Was neu ist
 
@@ -67,9 +70,7 @@ Je Modell ≤ 2 Materialien, Draw Calls unverändert (Säge 2, Massband 3, Bleis
 
 - **Werkbank-AO auf TEXCOORD_1** statt im ORM: Farbe/ORM kacheln, eine ortsfeste AO geht dort nicht hinein.
   three.js liest `occlusionTexture.texCoord = 1` (aoMap channel 1) ohne Code-Änderung.
-- **Massband-Normal-Map** (UASTC, 647 kB) ist die grösste Datei; bei Bedarf auf 512² (≈ 170 kB).
+- Kantenverschleiss auf der Bankplatte nicht umgesetzt (kachelnde Textur; bräuchte eine eigene Detail-/AO-Karte).
 - **Vorher-Bilder** stammen aus three, nicht aus Cycles (die alten GLB nutzen KTX2/meshopt, die der
   Blender-Importer nicht lesen kann).
-- **Lint:** `npm run lint` meldet JS-Dateien aus `.venv-blender/` (pip-Paket); `eslint.config.js` braucht
-  `.venv-blender/` in den Ignores (Director). Mit `--ignore-pattern '.venv-blender/**'` lint-sauber.
 - Nicht auf echtem iPhone/Safari geprüft.
