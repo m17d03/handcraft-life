@@ -27,3 +27,9 @@ Status: **Freigegeben** (Mensch, 2026-11-01) (Phase 0). Phase-1-Tickets werden e
 ## Später
 Phase 2: Bohren, Schleifen, Montage, Auftragsbrett, Skills Holz/Wirtschaft · Export/Import Spielstand ·
 Phase 3: Metall, 3D-Druck · Phase 4: Fasan · Phase 5+: Ente, Hund, Boot, Angeln.
+
+## Technische Restpunkte (niedrig)
+- Sicherungs-Rotation: Restpunkte aus QA Ticket 020 (siehe Protokoll dort).
+- Blender-Export: Meshes vor Export triangulieren, damit Tangenten für Normal-Maps exportiert werden (Ticket 019).
+- Bankplatte: Kantenverschleiss über Detailkarte (Ticket 019).
+- Texturspeicher 114,7 MB nah am Ziel 120 MB – vor neuen Assets Budget prüfen.
