@@ -28,13 +28,28 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      # Installation hing zweimal 40 min (apt/Download auf dem Runner) → eigene Zeitgrenze und bis zu 3 Versuche.
+      # WebKit-Download war mehrfach unzuverlässig (hing 40 min bzw. scheiterte) → Browser zwischenspeichern
+      # (Schlüssel = Playwright-Version), Systempakete separat, beides mit Zeitgrenze und Wiederholung.
+      - name: Playwright-Version ermitteln
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: WebKit aus dem Zwischenspeicher
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
       - name: WebKit installieren
-        timeout-minutes: 12
+        timeout-minutes: 15
         run: |
           for versuch in 1 2 3; do
-            timeout 240 npx playwright install --with-deps webkit && exit 0
-            echo "Versuch $versuch fehlgeschlagen, neuer Versuch in 15 s"; sleep 15
+            ok=1
+            timeout 300 npx playwright install-deps webkit || ok=0
+            if [ "$ok" = 1 ] && [ "${{ steps.pw-cache.outputs.cache-hit }}" != "true" ]; then
+              timeout 300 npx playwright install webkit || ok=0
+            fi
+            [ "$ok" = 1 ] && exit 0
+            echo "Versuch $versuch fehlgeschlagen, neuer Versuch in 20 s"; sleep 20
           done
           exit 1
       - id: e2e
