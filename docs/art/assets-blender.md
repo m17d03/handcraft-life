@@ -48,7 +48,7 @@ Spielscreenshot aus Software-Rendering, fps dort nicht aussagekräftig.
 | bleistift.glb | 360 → 238 (≤ 500) | 512² Farbe/ORM | 18 → 28 kB |
 | werkbank.glb | 1 104 → 1 784 (≤ 4 000) | Eiche 1024² Farbe/Normal/ORM (kachelnd, TEXCOORD_0) + AO 512² (TEXCOORD_1) | 542 → 647 kB |
 
-Je Modell ≤ 2 Materialien, alle `doubleSided = false`, Tangenten exportiert; Draw Calls unverändert
+Je Modell ≤ 2 Materialien, alle `doubleSided = false`. Tangenten: nur bei Blatt, Band, Gestell und Platte exportiert – bei Meshes mit Normal-Map (Griff, Gehäuse, Vorderzange) meldet Blender „Could not calculate tangents“ (Quads); three.js berechnet sie dann selbst (Director-Entscheid 2026-11-06, Folgepunkt: vor Export triangulieren). Draw Calls unverändert
 (Säge 2, Massband 3, Bleistift 1, Werkbank 4). `public/assets/` gesamt **4,00 MB** (vorher 3,61 MB; Grenze 6 MB).
 Im Spiel (Chromium, `__perf()`): Texturspeicher **114,7 MB** (Ziel < 120), 19 Draw Calls, 9 060 Dreiecke.
 Gebacken wird in voller Auflösung, verkleinert wird danach (`hcl.halbiere`, Normal-Maps neu normiert).
