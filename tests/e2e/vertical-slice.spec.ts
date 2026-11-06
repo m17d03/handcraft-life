@@ -754,7 +754,9 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
       return;
     }
     await gespeichert(page);
+    // Spielseite verlassen (sie speichert beim Verlassen – Ticket 017), dann auf der Startseite den
     // gespeicherten Stand als „aus einer neueren Version“ markieren (Kern-Schema 999)
+    await page.goto('./');
     await page.evaluate(
       () =>
         new Promise<void>((ok) => {
@@ -775,7 +777,7 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
           };
         }),
     );
-    await page.reload();
+    await page.goto(SPIEL);
     expect(await bereit(page)).toBe(true);
     const banner = page.locator('.spiel-speicherhinweis');
     await expect(banner).toContainText('neueren Version');
