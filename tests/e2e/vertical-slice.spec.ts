@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type {} from '../../src/perf/perf-snapshot';
 import type { WerkstattViewDebug } from '../../src/render/view-api';
@@ -22,6 +24,10 @@ declare global {
 // Bildqualität und Budgets prüft render.spec.ts mit Standardeinstellungen.
 const SPIEL = './spiel/?debug=1&saat=7&test=1&dpr=0.5&aa=0';
 const LANG = { timeout: 60_000 };
+// Ticket 017: Dokumentations-Screenshots nur mit DOKU_SCREENSHOTS=1 nach docs/, sonst in test-results/
+const SCREENSHOTS_017 = process.env['DOKU_SCREENSHOTS'] === '1'
+  ? resolve(import.meta.dirname, '../../docs/screenshots/017')
+  : resolve(import.meta.dirname, '../../test-results/screenshots-017');
 
 type Schritt = { t: 'down' | 'move' | 'up'; id: number; x: number; y: number } | { t: 'warte'; ms: number };
 
@@ -381,6 +387,131 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     await page.reload();
     expect(await bereit(page)).toBe(true);
     expect((await zustand(page))?.arbeit?.phase).toBe('messen');
+  });
+
+  test('Ticket 017 F7: Verlassen 0 ms nach einer Aktion, während ein Schreibvorgang läuft, verliert nichts', async ({ page }) => {
+    test.skip(hochkant(page), 'Querformat-Ablauf');
+    await page.goto(SPIEL);
+    if (!(await bereit(page))) {
+      test.skip(true, 'Browser ohne WebGL 2');
+      return;
+    }
+    await zurWerkbank(page);
+    await gespeichert(page);
+    const p = await page.evaluate(() => window.__view?.weltNachBildschirm(40) ?? null);
+    if (!p) throw new Error('Brett nicht im Bild');
+    const ergebnis = await page.evaluate((pt) => {
+      // 1) App-Wechsel: ein Schreibvorgang mit dem alten Stand startet und läuft noch
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      // 2) Aktion: Bezugsende wählen (Autosave entprellt)
+      const flaeche = document.elementFromPoint(pt.x, pt.y) ?? document.body;
+      for (const t of ['pointerdown', 'pointerup']) {
+        flaeche.dispatchEvent(new PointerEvent(t, { pointerId: 4, pointerType: 'touch', clientX: pt.x, clientY: pt.y, bubbles: true, cancelable: true }));
+      }
+      document.querySelector<HTMLButtonElement>('.hud-endpruefung-wahl')?.click();
+      const phase = window.__spiel?.zustand().arbeit?.phase;
+      // 3) 0 ms danach: Seite wird verlassen
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+      // 4) iOS beendet die Seite: was bis jetzt nicht als Transaktion angelegt ist, geht verloren
+      const fehler = (): never => {
+        const e = new Error('Seite beendet (Test)');
+        e.name = 'AbortError';
+        throw e;
+      };
+      IDBDatabase.prototype.transaction = fehler;
+      return phase;
+    }, p);
+    expect(ergebnis).toBe('messen');
+    // Bereits angelegte Transaktionen laufen zu Ende (wie beim echten Beenden nach pagehide)
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+    await page.reload();
+    expect(await bereit(page)).toBe(true);
+    expect((await zustand(page))?.arbeit?.phase).toBe('messen');
+  });
+
+  test('Ticket 017 N3: Anschlagwinkel zeigt das schiefe Ende in der Bezugsende-Phase (Lichtspalt)', async ({ page }) => {
+    test.skip(hochkant(page), 'Querformat-Ablauf');
+    await page.goto('./spiel/?debug=1&saat=7&test=1&dpr=1&aa=0');
+    if (!(await bereit(page))) {
+      test.skip(true, 'Browser ohne WebGL 2');
+      return;
+    }
+    expect(await page.evaluate(() => window.__view?.zustand().anschlagwinkel)).toBe(false);
+    await zurWerkbank(page);
+    expect(await phase(page)).toBe('bezugsende');
+    expect(await page.evaluate(() => window.__view?.zustand().anschlagwinkel)).toBe(true);
+    const z = await zustand(page);
+    const ws = z?.inventar.werkstuecke.find((w) => w.id === z.arbeit?.werkstueckId);
+    const L = ws?.masse_mm.l ?? 2000;
+    const schief = Math.abs(ws?.enden.a.winkel_grad ?? 0) > Math.abs(ws?.enden.b.winkel_grad ?? 0) ? 'a' : 'b';
+    const punkte = await page.evaluate((l) => ({ a: window.__view?.weltNachBildschirm(0) ?? null, b: window.__view?.weltNachBildschirm(l) ?? null }), L);
+    const pa = punkte.a;
+    const pb = punkte.b;
+    if (!pa || !pb) throw new Error('Brettenden nicht im Bild');
+    const ende = { a: pa, b: pb };
+    // Debug-Overlay verdeckt sonst das linke Ende (nur Messung/Screenshot)
+    await page.addStyleTag({ content: '#debug-overlay { display: none !important; }' });
+    // Zwei Frames warten, damit der Anschlagwinkel gezeichnet ist
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    mkdirSync(SCREENSHOTS_017, { recursive: true });
+    const v = page.viewportSize() ?? { width: 852, height: 393 };
+    const ausschnitt = (pt: { x: number; y: number }) => {
+      const w = 110;
+      const h = 110;
+      const x = Math.max(0, Math.min(v.width - w, pt.x - w / 2));
+      const y = Math.max(0, Math.min(v.height - h, pt.y - h / 2));
+      return { x, y, width: w, height: h };
+    };
+    // Helle, warme Pixel (Lichtspalt) je Ende zählen
+    const hell = async (bild: Buffer): Promise<number> =>
+      page.evaluate(async (b64) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d');
+        if (!ctx) return -1;
+        ctx.drawImage(img, 0, 0);
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 0; i < d.length; i += 4) if ((d[i] ?? 0) > 245 && (d[i + 1] ?? 0) > 225 && (d[i + 2] ?? 0) > 150) n++;
+        return n;
+      }, bild.toString('base64'));
+    const bildA = await page.screenshot({ clip: ausschnitt(pa) });
+    const bildB = await page.screenshot({ clip: ausschnitt(pb) });
+    const n = { a: await hell(bildA), b: await hell(bildB) };
+    const sauber = schief === 'a' ? 'b' : 'a';
+    // Budget: mit Anschlagwinkeln und Lichtspalt weiter < 80 Draw Calls
+    const perf = await page.evaluate(() => {
+      const p = window.__perf?.();
+      return p ? { drawCalls: p.drawCalls, dreiecke: p.triangles } : null;
+    });
+    notiz('Ticket 017 Lichtspalt (helle Pixel je Ende)', { schief, n, perf });
+    if (perf) expect(perf.drawCalls).toBeLessThan(80);
+    expect(n[schief]).toBeGreaterThanOrEqual(12);
+    expect(n[sauber]).toBeLessThan(n[schief] / 3);
+    const projekt = test.info().project.name;
+    if (projekt.includes('quer')) {
+      await page.screenshot({ path: resolve(SCREENSHOTS_017, 'bezugsende-gesamt.jpg'), type: 'jpeg', quality: 55 });
+      const gross = (pt: { x: number; y: number }) => {
+        const w = 240;
+        const h = 180;
+        return { x: Math.max(0, Math.min(v.width - w, pt.x - w / 2)), y: Math.max(0, Math.min(v.height - h, pt.y - h / 2)), width: w, height: h };
+      };
+      writeFileSync(resolve(SCREENSHOTS_017, `ende-schief-${schief}.jpg`), await page.screenshot({ clip: gross(ende[schief]), type: 'jpeg', quality: 85 }));
+      writeFileSync(resolve(SCREENSHOTS_017, `ende-sauber-${sauber}.jpg`), await page.screenshot({ clip: gross(ende[sauber]), type: 'jpeg', quality: 85 }));
+    }
+    // Nach der Wahl des Bezugsendes verschwinden die Winkel
+    const tipp = await page.evaluate((mm) => window.__view?.weltNachBildschirm(mm) ?? null, sauber === 'a' ? 40 : L - 40);
+    if (!tipp) throw new Error('Brett nicht im Bild');
+    await tippen(page, tipp);
+    await page.locator('.hud-endpruefung-wahl').click();
+    await expect.poll(() => phase(page), LANG).toBe('messen');
+    expect(await page.evaluate(() => window.__view?.zustand().anschlagwinkel)).toBe(false);
   });
 
   test('beschädigter Spielstand: klarer Hinweis, Spiel startet neu, „Neu beginnen“ hebt die Sperre auf (S7/S8)', async ({ page }) => {

@@ -106,6 +106,51 @@ export interface SzenenZustand {
   readonly hervorgehoben: string | null;
   readonly risse: EndRisse;
   readonly winkel: EndWinkel;
+  /**
+   * Bezugsende-Phase (Ticket 017, N3): Anschlagwinkel liegen an beiden Werksenden an; am schiefen Ende zeigt
+   * ein Lichtspalt die Abweichung.
+   */
+  readonly endenPruefen?: boolean;
+}
+
+/** Anschlagwinkel (m): Stahlzunge quer über das Brettende, Anschlag aus Holz an der vorderen Brettkante. */
+export const ANSCHLAGWINKEL = {
+  zungeBreite: 0.024,
+  zungeDicke: 0.0012,
+  /** Zunge ragt hinten über die Brettkante hinaus */
+  zungeHintenUeber: 0.03,
+  anschlagLaenge: 0.12,
+  anschlagDicke: 0.014,
+  anschlagHoehe: 0.022,
+} as const;
+
+/**
+ * Lichtspalt unterhalb dieser Breite (m, gezeichnet) gilt als anliegend – kein Leuchten am sauberen Ende
+ * (sauber ≤ 0,3 mm auf halber Breite → ≤ 1,8 mm gezeichnet; schief ≥ 1 mm → ≥ 6 mm gezeichnet).
+ */
+export const LICHTSPALT_MIN_M = 0.003;
+
+/**
+ * Lichtspalt zwischen Anschlagwinkel und Brettende in lokalen Koordinaten des Stücks (Mitte = 0), für das
+ * linke (`seite` −1) bzw. rechte (+1) Ende: Die Zunge liegt am weitesten vorstehenden Punkt der Stirn an;
+ * zur anderen Kante hin öffnet sich ein Keil. `k` = tan(gezeichneter Winkel) wie in `endenScheren`.
+ * Ergebnis: x der Zungen-Innenkante, z des Anlagepunkts und der offenen Kante, grösste Spaltbreite (m).
+ */
+export function lichtspalt(
+  laengeM: number,
+  breiteM: number,
+  seite: -1 | 1,
+  k: number,
+): { zungeX: number; zAnlage: number; zOffen: number; spaltM: number } {
+  const hw = breiteM / 2;
+  // Stirnlinie: links x = −L/2 + k·z, rechts x = L/2 − k·z (siehe endenScheren)
+  const stirnX = (z: number): number => (seite < 0 ? -laengeM / 2 + k * z : laengeM / 2 - k * z);
+  const kandidaten = [-hw, hw];
+  // Anlage = am weitesten aussen liegender Punkt der Stirn
+  const zAnlage = kandidaten.reduce((best, z) => (seite * stirnX(z) > seite * stirnX(best) ? z : best), -hw);
+  const zOffen = -zAnlage;
+  const zungeX = stirnX(zAnlage);
+  return { zungeX, zAnlage, zOffen, spaltM: Math.abs(stirnX(zOffen) - zungeX) };
 }
 
 function geometrie(m: MeshDaten): THREE.BufferGeometry {
@@ -172,6 +217,8 @@ export class WerkstattSzene {
   private readonly brett: THREE.Mesh;
   private readonly rest: THREE.Mesh;
   private readonly bezugsMarke: THREE.Mesh;
+  /** Ticket 017 (N3): Anschlagwinkel und Lichtspalt je Werksende (a = links, b = rechts). */
+  private readonly winkelPruefer: Record<'a' | 'b', { winkel: THREE.Mesh; spalt: THREE.Mesh; schein: THREE.Mesh }>;
   private readonly markierung: THREE.Mesh;
   private readonly fuge: THREE.Mesh;
   private readonly risse: { a: THREE.Mesh; b: THREE.Mesh };
@@ -452,6 +499,7 @@ export class WerkstattSzene {
     this.gruppen.set('reststueck', this.rest);
     const markeMat = this.mat('brett.bezugsende', { color: PALETTE.bernstein, emissive: PALETTE.bernstein, emissiveIntensity: 0.35, roughness: 0.6 });
     this.bezugsMarke = this.mesh('brett.bezugsende', new THREE.BoxGeometry(0.004, 0.0004, BRETT.breiteMm / 1000 - 0.004), markeMat, {});
+    this.winkelPruefer = this.anschlagwinkelBauen(weich);
     this.markierung = this.mesh(
       'brett.markierung',
       new THREE.BoxGeometry(0.0007, 0.0003, BRETT.breiteMm / 1000 - 0.002),
@@ -654,6 +702,65 @@ export class WerkstattSzene {
     this.platzhalterBand = { band, textur, texturRueck, mat, haken, gehaeuse };
   }
 
+  /**
+   * Anschlagwinkel (N3, Ticket 017): Wie ein Schreiner prüft – Anschlag an der vorderen Brettkante, Stahlzunge
+   * quer an der Stirn. Geometrie für das linke Ende gebaut (Zungen-Innenkante bei x = 0, Zunge nach −x,
+   * Anschlag nach +x); das rechte Ende ist gespiegelt. Ein Mesh je Winkel (Stahl/Holz über Vertexfarben),
+   * dazu der Lichtspalt (Keil, unbeleuchtet hell) und ein weicher Lichtschein darüber.
+   */
+  private anschlagwinkelBauen(weich: THREE.Texture): Record<'a' | 'b', { winkel: THREE.Mesh; spalt: THREE.Mesh; schein: THREE.Mesh }> {
+    const A = ANSCHLAGWINKEL;
+    const hw = BRETT.breiteMm / 2000;
+    const teil = (gx: number, gy: number, gz: number, px: number, py: number, pz: number, farbe: string): THREE.BufferGeometry => {
+      const g = new THREE.BoxGeometry(gx, gy, gz).translate(px, py, pz);
+      const c = new THREE.Color(farbe);
+      const n = g.getAttribute('position').count;
+      const farben = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) farben.set([c.r, c.g, c.b], i * 3);
+      g.setAttribute('color', new THREE.BufferAttribute(farben, 3));
+      return g;
+    };
+    // y = 0 ist die Brettoberseite; die Zunge liegt bündig darauf, der Anschlag hängt vor der Vorderkante
+    const zungeL = 2 * hw + A.anschlagDicke + A.zungeHintenUeber;
+    const zungeMitteZ = hw + A.anschlagDicke - zungeL / 2;
+    const teile = [
+      teil(A.zungeBreite, A.zungeDicke, zungeL, -A.zungeBreite / 2, A.zungeDicke / 2 + 0.0002, zungeMitteZ, '#c9d2d6'),
+      teil(A.anschlagLaenge, A.anschlagHoehe, A.anschlagDicke, A.anschlagLaenge / 2 - A.zungeBreite, 0.004 - A.anschlagHoehe / 2 + 0.0002, hw + A.anschlagDicke / 2 + 0.0003, '#5a3a22'),
+      // Messingnieten auf dem Anschlag
+      teil(0.006, 0.0008, 0.006, 0.02, 0.0044, hw + A.anschlagDicke / 2 + 0.0003, '#d9a35b'),
+      teil(0.006, 0.0008, 0.006, 0.07, 0.0044, hw + A.anschlagDicke / 2 + 0.0003, '#d9a35b'),
+    ];
+    const winkelGeo = mergeGeometries(teile);
+    for (const t of teile) t.dispose();
+    const winkelMat = this.mat('brett.anschlagwinkel', { color: '#ffffff', vertexColors: true, roughness: 0.38, metalness: 0.55 });
+    const spaltMat = this.basis('brett.lichtspalt', { color: new THREE.Color(PALETTE.hellAkzent).multiplyScalar(1.6), toneMapped: false, side: THREE.DoubleSide });
+    const scheinMat = this.basis('brett.lichtschein', {
+      color: PALETTE.hellAkzent,
+      alphaMap: weich,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const scheinGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    this.merke(scheinGeo);
+    const bau = (ende: 'a' | 'b'): { winkel: THREE.Mesh; spalt: THREE.Mesh; schein: THREE.Mesh } => {
+      const winkel = this.mesh(`brett.anschlagwinkel.${ende}`, winkelGeo, winkelMat, { wirft: true });
+      winkel.scale.x = ende === 'a' ? 1 : -1;
+      const spaltGeo = new THREE.BufferGeometry();
+      spaltGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
+      const spalt = this.mesh(`brett.lichtspalt.${ende}`, spaltGeo, spaltMat, {});
+      const schein = new THREE.Mesh(scheinGeo, scheinMat);
+      schein.name = `brett.lichtschein.${ende}`;
+      schein.renderOrder = 2;
+      this.szene.add(schein);
+      for (const m of [winkel, spalt, schein]) m.visible = false;
+      return { winkel, spalt, schein };
+    };
+    return { a: bau('a'), b: bau('b') };
+  }
+
   private merke(...dinge: { dispose(): void }[]): void {
     this.entsorgen.push(...dinge);
   }
@@ -698,6 +805,7 @@ export class WerkstattSzene {
   aktualisiere(z: SzenenZustand): void {
     this.setzeBrett(z.lage, z.winkel);
     this.setzeRisse(z.lage, z.risse, z.winkel);
+    this.setzeAnschlagwinkel(z.lage, z.winkel, z.endenPruefen === true);
     this.setzeMarkierung(z.lage, z.markierungMm);
     this.setzeMassband(z.lage, z.massbandMm);
     this.setzeSaege(z.lage, z.markierungMm, z.saege);
@@ -744,6 +852,41 @@ export class WerkstattSzene {
     this.bezugsMarke.visible = lage.bezugsende !== null;
     const ende = mmNachWelt(lage, 2, 0, 0.0002);
     this.bezugsMarke.position.set(...ende);
+  }
+
+  /** Anschlagwinkel an beiden Werksenden (nur ungeschnitten, in der Bezugsende-Phase), Lichtspalt am schiefen Ende. */
+  private setzeAnschlagwinkel(lage: BrettLage, winkel: EndWinkel, pruefen: boolean): void {
+    const st = brettStuecke(lage)[0];
+    const an = pruefen && lage.schnittIstMm === null && st !== undefined;
+    for (const ende of ['a', 'b'] as const) {
+      const p = this.winkelPruefer[ende];
+      p.winkel.visible = an;
+      p.spalt.visible = false;
+      p.schein.visible = false;
+      if (!an) continue;
+      const seite = ende === 'a' ? -1 : 1;
+      const k = Math.tan((winkel[ende] * ENDWINKEL_UEBERZEICHNUNG * Math.PI) / 180);
+      const breiteM = BRETT.breiteMm / 1000;
+      const l = lichtspalt(st.laengeMm / 1000, breiteM, seite, k);
+      const [mx, , mz] = st.mitte;
+      const y = BRETT_OBEN_Y;
+      p.winkel.position.set(mx + l.zungeX, y, mz);
+      if (l.spaltM < LICHTSPALT_MIN_M) continue;
+      // Keil: Zungen-Innenkante (Anlagepunkt → offene Kante) und Stirn an der offenen Kante
+      const stirnOffen = l.zungeX - seite * l.spaltM;
+      const pos = p.spalt.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const ys = y + 0.0001;
+      pos.setXYZ(0, mx + l.zungeX, ys, mz + l.zAnlage);
+      pos.setXYZ(1, mx + l.zungeX, ys, mz + l.zOffen);
+      pos.setXYZ(2, mx + stirnOffen, ys, mz + l.zOffen);
+      pos.needsUpdate = true;
+      p.spalt.geometry.computeBoundingSphere();
+      p.spalt.visible = true;
+      // Weicher Schein über der offenen Hälfte des Spalts (Licht fällt durch den Spalt)
+      p.schein.position.set(mx + l.zungeX - (seite * l.spaltM) / 2, y + 0.0016, mz + (l.zAnlage * 0.15 + l.zOffen * 0.85) * 0.75);
+      p.schein.scale.set(l.spaltM + 0.016, 1, breiteM * 0.75);
+      p.schein.visible = true;
+    }
   }
 
   /** Endrisse an den physischen Enden a (links, −x) und b (rechts); nach dem Schnitt am jeweiligen Stück. */

@@ -346,9 +346,15 @@ class WerkstattViewThree implements WerkstattViewDebug {
       hervorgehoben: this.hervor,
       risse: this.risse,
       winkel: this.winkel,
+      endenPruefen: this.endenPruefen(),
     });
     if (schatten) this.renderer.shadowMap.needsUpdate = true;
     this.feedbackOffen = true;
+  }
+
+  /** Bezugsende-Phase: Arbeitsansicht, Brett ungeschnitten, noch kein Bezugsende gewählt (Ticket 017, N3). */
+  private endenPruefen(): boolean {
+    return this.arbeit && this.lage.bezugsende === null && this.lage.schnittIstMm === null;
   }
 
   private berechneArbeitsPose(): KameraPose {
@@ -392,6 +398,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     if (an === this.arbeit) return;
     this.arbeit = an;
     if (an) this.arbeitsZiel = this.berechneArbeitsPose();
+    this.anwenden(true); // Anschlagwinkel ein/aus
     const ziel = an && this.arbeitsZiel ? this.arbeitsZiel : this.ich.pose;
     this.fahrt.starte(this.pose, ziel, performance.now());
   }
@@ -488,6 +495,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
       assets: this.szene.mitAssets ? 'modelle' : 'platzhalter',
       risse: { ...this.risse },
       winkel: { ...this.winkel },
+      anschlagwinkel: this.endenPruefen(),
       diagnose: {
         glRenderer: this.glRenderer,
         software: this.software,
