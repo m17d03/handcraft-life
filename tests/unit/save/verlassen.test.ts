@@ -162,6 +162,8 @@ interface AttrappenOptionen {
   nachOeffnen?: () => void;
   /** Erste Verbindung meldet beim ersten Schreiben "connection is closing". */
   ersteSchliesst?: boolean;
+  /** Lesen der Sicherungsschlüssel beim Öffnen scheitert (Rückfall auf getAllKeys in der Transaktion). */
+  schluesselFehler?: boolean;
 }
 
 /**
@@ -172,6 +174,10 @@ function idbAttrappe(o: AttrappenOptionen = {}) {
   const daten = new Map<string, unknown>();
   const sicherung = new Map<string, unknown>();
   const protokoll: string[] = [];
+  /** Alle Anfragen in Reihenfolge (put/delete je Store, commit). */
+  const anfragen: string[] = [];
+  /** Seitenabbau: Transaktionen, die danach noch Anfragen absetzen, werden ganz verworfen (wie Navigation weg). */
+  const seite = { beendet: false, verworfen: 0 };
   let verbindungen = 0;
   let kette = Promise.resolve();
   const fabrik = {
@@ -181,8 +187,8 @@ function idbAttrappe(o: AttrappenOptionen = {}) {
       const db: Record<string, unknown> = {
         objectStoreNames: { contains: () => true },
         close: vi.fn(),
-        transaction: () => {
-          if (o.ersteSchliesst === true && nr === 0 && erstesSchreiben) {
+        transaction: (_stores: unknown, modus?: string) => {
+          if (o.ersteSchliesst === true && nr === 0 && erstesSchreiben && modus === 'readwrite') {
             erstesSchreiben = false;
             const e = new Error('The database connection is closing.');
             e.name = 'InvalidStateError';
@@ -190,19 +196,37 @@ function idbAttrappe(o: AttrappenOptionen = {}) {
           }
           const ops: (() => void)[] = [];
           const tx: Record<string, unknown> = {};
+          let spaet = false;
+          let committed = false;
+          const anfrage = (text: string): void => {
+            if (committed) {
+              const e = new Error('Transaktion bereits abgeschlossen');
+              e.name = 'TransactionInactiveError';
+              throw e;
+            }
+            if (seite.beendet) spaet = true;
+            anfragen.push(text);
+          };
+          tx.commit = () => {
+            committed = true;
+            anfragen.push('commit');
+          };
           const store = (name: string) => {
             const ziel = name === 'spielstand' ? daten : sicherung;
             return {
               put: (wert: unknown, schluessel: string) => {
+                anfrage(`put ${name} ${schluessel}`);
                 if (name === 'spielstand') protokoll.push(`angelegt:${String(wert)}`);
                 ops.push(() => ziel.set(schluessel, wert));
                 return {};
               },
               delete: (schluessel: string) => {
+                anfrage(`delete ${name} ${schluessel}`);
                 ops.push(() => ziel.delete(schluessel));
                 return {};
               },
               getAllKeys: () => {
+                if (o.schluesselFehler === true && modus !== 'readwrite') throw new Error('getAllKeys gestört (Test)');
                 const r: Record<string, unknown> = { result: [...ziel.keys()] };
                 queueMicrotask(() => {
                   (r.onsuccess as (() => void) | undefined)?.();
@@ -224,6 +248,15 @@ function idbAttrappe(o: AttrappenOptionen = {}) {
             () =>
               new Promise<void>((ok) => {
                 setTimeout(() => {
+                  if (spaet) {
+                    seite.verworfen += 1;
+                    const e = new Error('Seite abgebaut: Transaktion verworfen (Test)');
+                    e.name = 'AbortError';
+                    (tx as { error?: Error }).error = e;
+                    (tx.onabort as (() => void) | undefined)?.();
+                    ok();
+                    return;
+                  }
                   for (const op of ops) op();
                   (tx.oncomplete as (() => void) | undefined)?.();
                   ok();
@@ -241,7 +274,7 @@ function idbAttrappe(o: AttrappenOptionen = {}) {
       return r;
     },
   };
-  return { fabrik: fabrik as unknown as IDBFactory, daten, protokoll };
+  return { fabrik: fabrik as unknown as IDBFactory, daten, sicherung, protokoll, anfragen, seite };
 }
 
 describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihenfolge', () => {
@@ -270,22 +303,27 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
   });
 
   it('älterer Aufruf, der erst nach einem neueren anlegen würde, wird übersprungen (nie älter über neuer)', async () => {
-    const ref: { ablage?: IndexedDbAblage; neuer?: Promise<void> | undefined } = {};
-    const { fabrik, protokoll, daten } = idbAttrappe({
-      // Verbindung ist offen, die Fortsetzung des älteren Aufrufs wartet noch → neuerer kommt synchron zuerst
-      nachOeffnen: () => {
-        ref.neuer ??= ref.ablage?.schreiben('"neu"', 'z2');
+    const { fabrik, protokoll, daten } = idbAttrappe();
+    const ablage = new IndexedDbAblage(fabrik);
+    // Sobald die Verbindung offen ist (und bevor die Fortsetzung des älteren, wartenden Aufrufs läuft),
+    // kommt ein neuerer Aufruf – er legt seine Transaktion synchron an.
+    const ref: { neuer?: Promise<void> | undefined } = {};
+    let wert: unknown = null;
+    Object.defineProperty(ablage, 'offen', {
+      configurable: true,
+      get: () => wert,
+      set: (v: unknown) => {
+        wert = v;
+        if (v !== null) ref.neuer ??= ablage.schreiben('"neu"', 'z2');
       },
     });
-    const ablage = new IndexedDbAblage(fabrik);
-    ref.ablage = ablage;
     const aelter = ablage.schreiben('"alt"', 'z1');
     await vi.advanceTimersByTimeAsync(10);
     await aelter;
     expect(ref.neuer).toBeDefined();
     await ref.neuer;
     expect(protokoll).toEqual(['angelegt:"neu"']);
-    expect(ablage.schreibStatistik).toEqual({ angelegt: 1, uebersprungen: 1 });
+    expect(ablage.schreibStatistik).toMatchObject({ angelegt: 1, uebersprungen: 1 });
     expect(daten.get('aktuell')).toBe('"neu"');
   });
 
@@ -317,5 +355,77 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
     await vi.advanceTimersByTimeAsync(10);
     expect(await p).toBe(true);
     expect(geldIn(daten.get('aktuell') as string)).toBe(3);
+  });
+
+  it('Navigation weg direkt nach dem Schreiben: alle Anfragen synchron + commit(), nichts geht verloren (QA 017 R1)', async () => {
+    const { fabrik, daten, sicherung, anfragen, seite } = idbAttrappe();
+    const s = neu(new IndexedDbAblage(fabrik));
+    await s.laden();
+    const p0 = s.sofortSpeichern(stand(1));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await p0).toBe(true);
+    anfragen.length = 0;
+    const p = s.sofortSpeichern(stand(7)); // pagehide bei Navigation
+    // Noch im selben Aufruf: aktuell, Sicherung und commit sind abgesetzt
+    expect(anfragen[0]).toBe('put spielstand aktuell');
+    expect(anfragen.some((a) => a.startsWith('put sicherung autosave|'))).toBe(true);
+    expect(anfragen.at(-1)).toBe('commit');
+    seite.beendet = true; // Seite wird abgebaut
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await p).toBe(true);
+    expect(seite.verworfen).toBe(0);
+    expect(geldIn(daten.get('aktuell') as string)).toBe(7);
+    expect([...sicherung.keys()].filter((k) => k.startsWith('autosave|'))).toHaveLength(2);
+  });
+
+  it('Rotation mit mitgeführten Schlüsseln: höchstens 3 Autosaves, Laufnummer steigt, vor-migration bleibt', async () => {
+    const { fabrik, sicherung } = idbAttrappe();
+    const ablage = new IndexedDbAblage(fabrik);
+    await Promise.all([ablage.sichern('vor-migration', '"roh"', 'z0'), vi.advanceTimersByTimeAsync(10)]);
+    for (let i = 1; i <= 6; i++) {
+      const p = ablage.schreiben(`"${String(i)}"`, `z${String(i)}`);
+      await vi.advanceTimersByTimeAsync(10);
+      await p;
+    }
+    const keys = [...sicherung.keys()].sort();
+    expect(keys.filter((k) => k.startsWith('vor-migration|'))).toHaveLength(1);
+    const auto = keys.filter((k) => k.startsWith('autosave|'));
+    expect(auto.map((k) => Number(k.split('|')[1]))).toEqual([5, 6, 7]);
+    expect(ablage.schreibStatistik.sofort).toBe(7);
+  });
+
+  it('Schlüssel nicht lesbar: Rückfall über getAllKeys funktioniert (ohne Abbau)', async () => {
+    const { fabrik, daten, sicherung } = idbAttrappe({ schluesselFehler: true });
+    const ablage = new IndexedDbAblage(fabrik);
+    const p = ablage.schreiben('"r"', 'z');
+    await vi.advanceTimersByTimeAsync(10);
+    await p;
+    expect(daten.get('aktuell')).toBe('"r"');
+    expect([...sicherung.keys()]).toHaveLength(1);
+    expect(ablage.schreibStatistik.sofort).toBe(0);
+  });
+
+  it('abgebrochene Transaktion: mitgeführte Schlüssel verworfen, danach wieder gelesen und synchron', async () => {
+    const { fabrik, daten, seite } = idbAttrappe();
+    const ablage = new IndexedDbAblage(fabrik);
+    const p1 = ablage.schreiben('"a"', 'z1');
+    await vi.advanceTimersByTimeAsync(10);
+    await p1;
+    // Rückfall-Pfad erzwingen: Abbruch → Schlüssel unbekannt
+    seite.beendet = true;
+    const p2 = ablage.schreiben('"b"', 'z2').catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await p2).toBeInstanceOf(Error);
+    seite.beendet = false;
+    expect(daten.get('aktuell')).toBe('"a"');
+    const p3 = ablage.schreiben('"c"', 'z3'); // Rückfall (Schlüssel unbekannt), danach neu gelesen
+    await vi.advanceTimersByTimeAsync(10);
+    await p3;
+    const vorher = ablage.schreibStatistik.sofort;
+    const p4 = ablage.schreiben('"d"', 'z4');
+    await vi.advanceTimersByTimeAsync(10);
+    await p4;
+    expect(ablage.schreibStatistik.sofort).toBe(vorher + 1);
+    expect(daten.get('aktuell')).toBe('"d"');
   });
 });
