@@ -29,7 +29,30 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npx playwright install --with-deps webkit
-      - run: npm run test:e2e
+      - id: e2e
+        run: npm run test:e2e
+      # Ticket 015: Performance-Budget in WebKit (iPhone 15 quer, tests/perf/budget.spec.ts). Läuft auch nach roten
+      # E2E-Tests, damit die Messwerte sichtbar sind. Rot bei harter Grenze (Draw Calls, Dreiecke, Texturspeicher,
+      # Download) und bei Messfehler (z. B. 0 Draw Calls = Szene nicht gezeichnet). Ziel: < 5 min.
+      - name: Performance-Budget (WebKit)
+        id: perf
+        if: ${{ !cancelled() && steps.e2e.outcome != 'skipped' }}
+        timeout-minutes: 6
+        run: npx playwright test -c tests/perf/budget.config.ts
+      - name: Performance-Bericht in die Zusammenfassung
+        if: ${{ !cancelled() && steps.perf.outcome != 'skipped' }}
+        run: |
+          if [ -f test-results/perf-budget/budget.md ]; then
+            cat test-results/perf-budget/budget.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Performance-Budget – kein Bericht (Messung abgebrochen, siehe Log des Schritts)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.perf.outcome != 'skipped' }}
+        with:
+          name: perf-budget
+          path: test-results/perf-budget/
+          retention-days: 30
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
