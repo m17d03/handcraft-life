@@ -3,7 +3,7 @@ id: 018
 titel: WebKit-CI wieder grün – Szene rendert in WebKit ohne GPU, Komplettablauf im Zeitlimit
 agent: engine-engineer
 meilenstein: Phase 1 – Vertical Slice 0.1
-status: open
+status: done
 reifegrad: Implementiert
 blocked_by: []
 branch: ticket/018-webkit-ci
@@ -34,9 +34,18 @@ Der CI-Lauf auf main ist wieder vollständig grün (WebKit, iPhone-Profil hoch u
    Asset-Ladefehler sichtbar melden statt still nichts zu zeichnen.
 
 ## Abnahmekriterien
-- [ ] CI-Lauf auf dem Ticket-Branch vollständig grün (WebKit hoch + quer), zweimal hintereinander
-- [ ] Ursache im Protokoll benannt; Asset-Ladefehler werden im Spiel sichtbar gemeldet (Hinweis + Debug-Overlay), nie stilles Nichts
-- [ ] Kein Test abgeschwächt oder übersprungen, um grün zu werden
-- [ ] `npm run check` + lokale E2E grün
+- [x] CI-Lauf auf dem Ticket-Branch vollständig grün (WebKit hoch + quer), zweimal hintereinander
+- [x] Ursache im Protokoll benannt; Asset-Ladefehler werden im Spiel sichtbar gemeldet (Hinweis + Debug-Overlay), nie stilles Nichts
+- [x] Kein Test abgeschwächt oder übersprungen, um grün zu werden
+- [x] `npm run check` + lokale E2E grün
 
 ## Protokoll
+- Ursache: In WebKit ohne GPU 2–4 s je Frame (Hänger 5–12 s); `__perf()` wertete Frames als veraltet (Grenze 3× letzter
+  Abstand) → Draw Calls/Dreiecke 0; Vertical-Slice-E2E sprengte 420 s; HUD-Test 120 ms ohne Frame. Assets/KTX2 waren nicht schuld.
+- Fix: Veraltet-Grenze nach längstem Abstand; compileAsync vor „bereit“ und nach Wiederherstellung; Software-Renderer → dpr 1 ohne
+  MSAA; `?aa=0`; Asset-Frist 20 s mit Nachladen und Spieler-Hinweis „Einfache Grafik“; Auflösungsregelung: Untergrenze 1,5 (G3),
+  Erholung auch bei 30 Hz, einzelne Hänger senken nicht, Sperre klingt ab, Pausen/Kontextverlust nicht gewertet.
+- QA: 2 Nacharbeitsrunden (Notbremse dauerhaft tief bei 30 Hz/Hintergrund; Pendel-Sperre). Director-Nachprüfung mit QA-Simulation:
+  alle Szenarien 100 % bei 2,0. Director-Fix: fps < 1 als Dezimalzahl im Overlay (sonst „fps 0“ bei seltenen Frames).
+- CI grün: 41903610106, 42037312474 (66338dc), 42200316750 (b2a82a5), 42204272399 (9feb2fa) + zweiter Lauf auf 9feb2fa.
+- Scope-Freigaben Director: tests/unit/render+perf, src/spiel/main.ts, spiel/index.html (CSS).

@@ -31,4 +31,4 @@ Siehe CLAUDE.md und `docs/qa/quality-standards-entwurf.md` §5 (je Statusstufe).
 macht nichts "fertig".
 
 ## Offen
-- Folge-Ticket: eigener CI-Schritt für `tests/perf/`.
+- CI-Schritt „Performance-Budget (WebKit)“ aktiv seit Ticket 015.
