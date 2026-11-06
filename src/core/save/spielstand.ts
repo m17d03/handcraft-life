@@ -292,7 +292,7 @@ export class Spielstand {
     try {
       vorgang = this.ablage.schreiben(json, zeit.toISOString());
     } catch (e) {
-      vorgang = Promise.reject(e as Error);
+      vorgang = Promise.reject(e instanceof Error ? e : new Error(String(e)));
     }
     const ergebnis = vorgang.then(
       () => {

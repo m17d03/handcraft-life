@@ -51,6 +51,30 @@ export interface WerkstattOptionen {
 
 const endlich = (v: number, ersatz = 0): number => (Number.isFinite(v) ? v : ersatz);
 
+/** Simulierte Notch der HUD-Tests (`?notch=1` → Klasse `hud-sim-notch`, 59 pt je Seite wie hud.css). */
+const SIM_NOTCH_PT = 59;
+
+/**
+ * Grösste seitliche Safe Area (CSS-px) – das Brett steht mittig, also zählt die breitere Seite. Gelesen über
+ * ein unsichtbares Messelement mit `env(safe-area-inset-*)`; die HUD-Simulation `?notch=1` zählt mit.
+ */
+function safeAreaSeite(): number {
+  if (typeof document === 'undefined') return 0;
+  let probe = document.getElementById('werkstatt-safe-probe');
+  if (!probe) {
+    probe = document.createElement('div');
+    probe.id = 'werkstatt-safe-probe';
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText =
+      'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+      'padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)';
+    document.body.appendChild(probe);
+  }
+  const cs = getComputedStyle(probe);
+  const echt = Math.max(parseFloat(cs.paddingLeft) || 0, parseFloat(cs.paddingRight) || 0);
+  return document.querySelector('.hud-sim-notch') ? Math.max(echt, SIM_NOTCH_PT) : echt;
+}
+
 class WerkstattViewThree implements WerkstattViewDebug {
   private readonly renderer: THREE.WebGLRenderer;
   /** Wird in `starten()` aufgebaut (vor der ersten Nutzung durch den Aufrufer). */
@@ -328,7 +352,13 @@ class WerkstattViewThree implements WerkstattViewDebug {
   }
 
   private berechneArbeitsPose(): KameraPose {
-    return arbeitsPose([BRETT.x, BRETT_OBEN_Y, BRETT.z], this.lage.laengeMm / 1000, this.cssW / this.cssH, KAMERA.fovY, ARBEITSANSICHT);
+    const safe = safeAreaSeite();
+    return arbeitsPose([BRETT.x, BRETT_OBEN_Y, BRETT.z], this.lage.laengeMm / 1000, this.cssW / this.cssH, KAMERA.fovY, ARBEITSANSICHT, {
+      breitePx: this.cssW,
+      px: safe + ARBEITSANSICHT.randzonePt + ARBEITSANSICHT.fingerReservePt,
+      tiefeM: BRETT.breiteMm / 1000,
+      ueberstandM: ARBEITSANSICHT.ueberstandM,
+    });
   }
 
   private projektion(): Projektion {
@@ -435,6 +465,7 @@ class WerkstattViewThree implements WerkstattViewDebug {
     window.removeEventListener('pageshow', this.beiSichtwechsel);
     window.removeEventListener('resize', this.groesseAnpassen);
     this.beobachter?.disconnect();
+    document.getElementById('werkstatt-safe-probe')?.remove();
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose() vor dem Ende von starten()
     this.szene?.dispose();
     this.renderer.dispose();

@@ -181,7 +181,7 @@ function idbAttrappe(o: AttrappenOptionen = {}) {
       const db: Record<string, unknown> = {
         objectStoreNames: { contains: () => true },
         close: vi.fn(),
-        transaction: (stores: string | string[]) => {
+        transaction: () => {
           if (o.ersteSchliesst === true && nr === 0 && erstesSchreiben) {
             erstesSchreiben = false;
             const e = new Error('The database connection is closing.');
@@ -219,14 +219,13 @@ function idbAttrappe(o: AttrappenOptionen = {}) {
             };
           };
           tx.objectStore = store;
-          void stores;
           // Wirksam in Anlegereihenfolge, nach allen Anfragen dieser Transaktion
           kette = kette.then(
             () =>
               new Promise<void>((ok) => {
                 setTimeout(() => {
                   for (const op of ops) op();
-                  (tx.oncomplete as () => void)();
+                  (tx.oncomplete as (() => void) | undefined)?.();
                   ok();
                 }, 0);
               }),
@@ -249,7 +248,9 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
   it('bei offener Verbindung wird die Transaktion synchron im Aufruf angelegt', async () => {
     const { fabrik, protokoll, daten } = idbAttrappe();
     const ablage = new IndexedDbAblage(fabrik);
-    await ablage.schreiben('"eins"', 'z1');
+    const p0 = ablage.schreiben('"eins"', 'z1');
+    await vi.advanceTimersByTimeAsync(10);
+    await p0;
     void ablage.schreiben('"zwei"', 'z2'); // z. B. noch laufend
     const p = ablage.schreiben('"drei"', 'z3'); // pagehide
     expect(protokoll).toEqual(['angelegt:"eins"', 'angelegt:"zwei"', 'angelegt:"drei"']);
@@ -269,19 +270,20 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
   });
 
   it('älterer Aufruf, der erst nach einem neueren anlegen würde, wird übersprungen (nie älter über neuer)', async () => {
-    let ablage!: IndexedDbAblage;
-    let neuer: Promise<void> | null = null;
+    const ref: { ablage?: IndexedDbAblage; neuer?: Promise<void> | undefined } = {};
     const { fabrik, protokoll, daten } = idbAttrappe({
       // Verbindung ist offen, die Fortsetzung des älteren Aufrufs wartet noch → neuerer kommt synchron zuerst
       nachOeffnen: () => {
-        neuer ??= ablage.schreiben('"neu"', 'z2');
+        ref.neuer ??= ref.ablage?.schreiben('"neu"', 'z2');
       },
     });
-    ablage = new IndexedDbAblage(fabrik);
+    const ablage = new IndexedDbAblage(fabrik);
+    ref.ablage = ablage;
     const aelter = ablage.schreiben('"alt"', 'z1');
     await vi.advanceTimersByTimeAsync(10);
     await aelter;
-    await neuer;
+    expect(ref.neuer).toBeDefined();
+    await ref.neuer;
     expect(protokoll).toEqual(['angelegt:"neu"']);
     expect(ablage.schreibStatistik).toEqual({ angelegt: 1, uebersprungen: 1 });
     expect(daten.get('aktuell')).toBe('"neu"');
@@ -302,7 +304,9 @@ describe('F7 – IndexedDbAblage: Transaktion sofort, Reihenfolge = Aufrufreihen
     const { fabrik, protokoll, daten } = idbAttrappe();
     const s = neu(new IndexedDbAblage(fabrik));
     await s.laden();
-    await s.sofortSpeichern(stand(1)); // Verbindung offen, erster Stand liegt
+    const p0 = s.sofortSpeichern(stand(1));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await p0).toBe(true); // Verbindung offen, erster Stand liegt
     s.speichern(stand(2));
     await vi.advanceTimersByTimeAsync(1000); // entprellter Vorgang läuft …
     const vorher = protokoll.length;

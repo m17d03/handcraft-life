@@ -136,7 +136,7 @@ export class IndexedDbAblage implements Ablage {
     const offen = this.offen;
     if (offen !== null) {
       const nochmal = (e: unknown): Promise<T> => {
-        if (!verbindungVerloren(e)) return Promise.reject(e as Error);
+        if (!verbindungVerloren(e)) return Promise.reject(e instanceof Error ? e : new Error(String(e)));
         if (this.offen === offen) {
           this.offen = null;
           this.db = null;
