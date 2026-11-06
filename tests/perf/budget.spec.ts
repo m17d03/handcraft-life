@@ -298,8 +298,9 @@ async function rundumUmsehen(page: Page): Promise<number> {
         sende('move', start + richtung * 60 * i);
         await frame();
       }
+      // Loslassen an der Stelle der letzten Bewegung dreht nicht – kein eigener Frame (spart in WebKit ohne GPU
+      // ein Viertel der Umsehen-Frames à ~2 s, CI 42288369323); jede Blickrichtung bleibt gemessen.
       sende('up', start + richtung * 180);
-      await frame();
     };
     let gedreht = 0;
     let vorher = yaw();
