@@ -521,7 +521,8 @@ test('Budget Vertical Slice /spiel/ (Erkunden, Werkbank Sägen)', async ({ page,
 
   // Eigene Frist vor dem Test-Zeitlimit: Bei Überschreitung ist die Seite noch offen, die Teilmessung der laufenden
   // Ansicht wird gelesen und der Bericht nennt Schritt, Zeiten und Frames (sonst nur „Test timeout“).
-  const frist = Math.max(60_000, test.info().timeout - 40_000);
+  // PW_PERF_FRIST_MS: nur zum Prüfen der Abbruch-Diagnose (kürzere Frist erzwingen)
+  const frist = Number(process.env['PW_PERF_FRIST_MS'] ?? '0') || Math.max(60_000, test.info().timeout - 40_000);
   let fristTimer: ReturnType<typeof setTimeout> | undefined;
   const lauf = runde();
   lauf.catch(() => undefined); // nach Fristablauf kann die Runde noch scheitern – nicht unbehandelt lassen
