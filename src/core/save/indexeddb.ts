@@ -395,7 +395,7 @@ export class IndexedDbAblage implements Ablage {
    * Eigene Transaktion: alle Schlüssel lesen, je rotierender Art über `BEHALTEN` hinaus löschen (auch Sicherungen
    * anderer Tabs), Laufnummer und `bekannt` nachführen. Geht sie verloren (Abbau, Abbruch), holt die nächste sie nach.
    */
-  private aufraeumen(db: IDBDatabase): Promise<void> {
+  private aufraeumen(db: IDBDatabase, versuche = 5): Promise<void> {
     let tx: IDBTransaction;
     try {
       tx = db.transaction(STORE_SICHERUNG, 'readwrite');
@@ -417,7 +417,8 @@ export class IndexedDbAblage implements Ablage {
         this.vergessen(weg);
         this.schreibStatistik.aufgeraeumt += weg.length;
       },
-      () => undefined,
+      // Abgebrochen: einige Male neu versuchen (sonst bliebe ein Überschuss aus einem anderen Tab bis zum nächsten Speichern)
+      () => (versuche > 1 && this.offen === db ? this.aufraeumen(db, versuche - 1) : undefined),
     );
   }
 
