@@ -20,3 +20,5 @@ Index aller Entscheidungen; Details in `docs/decisions/`. Nur der Director setzt
 | 2026-11-01 | Phase 0 vom Menschen freigegeben („wie empfohlen“); Engine nach bester Performance statt Gerätetest aller drei Engines | Freigabe des Menschen |
 | 2026-11-01 | 3D-Modelle zuerst prozedural bzw. per Skript als GLB; Blender, sobald ein erreichbarer Konnektor existiert | Blender-Konnektor in der Cloud-Sitzung nicht verfügbar |
 | 2026-11-01 | Referenzgerät für Budgets: iPhone 15 Pro Max; Pixeldichte im Spiel ≤ 2 | Angabe des Menschen |
+| 2026-11-06 | CI: WebKit-Browser zwischengespeichert, apt-Systempakete ohne innere Zeitgrenze, Playwright in CI mit 1 Worker, Job-Grenze 60 min | Installation hing/scheiterte mehrfach; parallele WebKit-Instanzen ohne GPU blockierten sich (Lauf 42298703256); grün mit 1 Worker in 16 min (42303357140) |
+| 2026-11-06 | Perf-Budget-Messung: Tasten in der Seite, Diagnose je Schritt, Testzeit 360 s – Grenzen unverändert | Timeout war reine Runner-Langsamkeit, kein Rückschritt durch Ticket 017 (belegt) |
