@@ -29,6 +29,8 @@ QA-Nachprüfung Ticket 013: N3 (Schräge ≈ 5 px, in der Perspektive kaum sicht
       Schreibvorgang nicht abwarten, sondern den neuesten Stand in derselben Transaktion bzw. sofort in eigener Transaktion
       schreiben; Generationsregel aus Ticket 009 bleibt erhalten (älterer Stand überschreibt nie neueren). Test im Browser
       (Chromium) und Unit-Test
+- [ ] Kamera-Rahmung (Befund aus Ticket 016): Bei 734×343 und 852×393 mit Notch liegt das rechte Brettende in der 20-pt-Randzone
+      und ist dort nicht antippbar → Arbeitsansicht so rahmen, dass beide Brettenden bei allen Grössen ausserhalb Randzone + Safe Area liegen
 - [ ] Budgets unverändert (Draw Calls < 80); `npm run check` + E2E grün
 
 ## Protokoll

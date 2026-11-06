@@ -25,7 +25,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
-  reporter: 'list',
+  // In GitHub Actions zusätzlich Annotationen am Check-Run (Fehlermeldungen öffentlich lesbar, Ticket 018)
+  reporter: process.env['GITHUB_ACTIONS'] === 'true' ? [['list'], ['github']] : 'list',
   use: {
     baseURL: `http://localhost:${String(port)}`,
     trace: 'retain-on-failure',

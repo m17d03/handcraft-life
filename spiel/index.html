@@ -48,6 +48,28 @@
         text-align: center;
         pointer-events: none;
       }
+      /* Ticket 018: über der HUD-Ebene (.hud z-index 10, Hinweis darin 30) */
+      #spiel-status { z-index: 40; }
+      /* Hinweis während des Spiels (Platzhalter-Modelle): rechte obere Ecke unter dem Geld, ausserhalb von
+         Schrittband/Auftrag (Mitte), HUD-Hinweis (ab 84px), Sägespur (ab 96px) und unterer Leiste */
+      #spiel-status.ecke {
+        margin: 0;
+        left: auto;
+        bottom: auto;
+        right: calc(env(safe-area-inset-right, 0px) + 10px);
+        top: calc(env(safe-area-inset-top, 0px) + 54px);
+        transform: none;
+        /* eine Zeile, endet vor 84 px (HUD-Hinweis darunter); rechts neben dem Schrittband (Mitte ≤ 66 %) */
+        max-width: calc(30vw - 16px);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 4px 8px;
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.25;
+        text-align: right;
+      }
       #spiel-status[hidden] { display: none; }
       #spiel-status.fehler { color: #ff8a7a; border-color: #ff8a7a; }
       /* ADR 0004: nur Querformat. Endgültiges HUD macht Ticket 011. */

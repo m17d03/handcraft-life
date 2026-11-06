@@ -192,6 +192,14 @@
 /* ---------- Ticket 013 (QA F2/F4): Hinweis kompakt oben, nie über Ergebniskarte und Arbeitsfläche ---------- */
 .hud .hud-hinweis { top: calc(var(--sat) + 80px); max-width: min(680px, 78vw); padding: 5px 14px; line-height: 1.3;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Ticket 016 (QA N2): Hinweise brechen um statt „…“ – volle Breite zwischen den Randzonen, ausgewogene Zeilen */
+.hud .hud-hinweis { width: max-content; max-width: min(720px, calc(100vw - var(--sal) - var(--sar) - 2 * var(--rand) - 16px));
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; text-wrap: balance; }
+/* Sägen: Hinweis in der linken Hälfte, die Führungsspur rechts bleibt frei */
+.hud[data-modus='werkbank-saegen'] .hud-hinweis { left: calc(var(--sal) + var(--rand) + 14px); transform: none; text-align: left;
+  max-width: calc(50% - var(--sal) - var(--rand) - 24px); }
+/* Ansetzen: Vergrösserung immer unter dem (ggf. mehrzeiligen) Hinweis; --hinweis-unten setzt das HUD */
+.hud .hud-ansetzen { top: max(calc(var(--sat) + 128px), calc(var(--hinweis-unten, 0px) + 8px)); }
 .hud .hud-hinweis.warnung { border-color: var(--warn); color: #ffe2c2; background: rgb(60 32 14 / 94%); }
 .hud[data-modus='ergebnis'] .hud-hinweis { display: none; }
 
@@ -213,3 +221,26 @@
 .hud[data-phase='bezugsende'] .hud-massband-griff,
 .hud[data-phase='bezugsende'] .hud-leiste,
 .hud[data-phase='bezugsende'] .hud-lupe { display: none; }
+
+/* ---------- Ticket 016 (QA N1/N4): Nahansicht auf allen iPhones quer ----------
+   Im Schritt „Bezugsende“ sind Griff und Leisten unten aus → die Tafel nutzt die Breite zwischen den Randzonen.
+   Passt sie nicht unter Kopfzeile und Hinweis, wird sie stufenweise kompakter (endpruefungEinpassen). */
+.hud .hud-endpruefung { width: min(660px, calc(100vw - var(--sal) - var(--sar) - 2 * var(--rand) - 16px)); }
+.hud-endpruefung-bild svg { display: block; width: 180px; height: auto; }
+.hud-endpruefung .zeile { flex-wrap: wrap; }
+.hud .hud-endpruefung button { white-space: nowrap; padding: 0 14px; }
+.hud .hud-endpruefung .hud-endpruefung-zu { padding: 0; min-width: 48px; }
+.hud-endpruefung-text strong, .hud-endpruefung-text p { overflow-wrap: break-word; }
+.hud .hud-endpruefung.kompakt { gap: 10px; padding: 6px 10px; }
+.hud-endpruefung.kompakt .hud-endpruefung-bild svg { width: 124px; }
+.hud-endpruefung.kompakt .hud-endpruefung-text p { margin: 2px 0; }
+.hud-endpruefung.kompakt .zeile { margin-top: 4px; }
+.hud-endpruefung.knapp .hud-endpruefung-bild svg { width: 96px; }
+.hud-endpruefung.knapp .hud-endpruefung-text p.hinweis { display: none; }
+
+/* ---------- Ticket 016: Debug-Schalter auf der Geldanzeige (5× schnell tippen) ---------- */
+.hud .hud-geld { position: relative; pointer-events: auto; touch-action: none; }
+/* Trefferfläche ≥ 44 pt, ohne die Anzeige grösser zu zeichnen */
+.hud .hud-geld::after { content: ''; position: absolute; inset: -6px 0 -6px -12px; }
+.hud .hud-geld.tipp { animation: hud-geld-tipp 180ms ease-out; }
+@keyframes hud-geld-tipp { from { background-color: #4a3826; transform: scale(0.94); } to { background-color: var(--panel); transform: scale(1); } }

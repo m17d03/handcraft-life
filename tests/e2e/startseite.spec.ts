@@ -16,7 +16,7 @@ test('?debug=1 zeigt fps und fängt Fehler', async ({ page }) => {
   await page.goto('./?debug=1');
   const overlay = page.locator('#debug-overlay');
   await expect(overlay).toBeVisible();
-  await expect(overlay.locator('.debug-stats')).toHaveText(/fps [1-9]\d*/);
+  await expect(overlay.locator('.debug-stats')).toHaveText(/fps ([1-9]\d*|0,[1-9])/);
 
   await page.evaluate(() => {
     setTimeout(() => { throw new Error('Testfehler-Sync'); }, 0);

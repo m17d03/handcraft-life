@@ -11,6 +11,8 @@ import type {} from '../../src/hud-demo/demo-api';
 type Schritt =
   | { t: 'down' | 'move' | 'up' | 'cancel'; id: number; x: number; y: number }
   | { t: 'warte'; ms: number }
+  /** mindestens zwei Animation-Frames abwarten (Befehle wie „bewegen“ gehen je Frame hinaus) */
+  | { t: 'frames' }
   | { t: 'pruefe'; sel: string; name: string };
 
 /** Spielt Zeiger-Schritte im Browser ab. Ziel ist das Element unter dem Aufsetzpunkt (wie Pointer Capture). */
@@ -21,6 +23,10 @@ async function zeiger(page: Page, schritte: Schritt[]): Promise<Record<string, b
     for (const k of s) {
       if (k.t === 'warte') {
         await new Promise((r) => setTimeout(r, k.ms));
+        continue;
+      }
+      if (k.t === 'frames') {
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         continue;
       }
       if (k.t === 'pruefe') {
@@ -278,6 +284,8 @@ test.describe('Querformat', () => {
       { t: 'move', id: 1, x: L.x + 10, y: L.y - 40 },
       { t: 'move', id: 2, x: R.x + 50, y: R.y + 6 },
       { t: 'warte', ms: 120 },
+      // „bewegen“ geht je Animation-Frame hinaus: unter Last (CI ohne GPU) kann 120 ms vor dem nächsten Frame enden (Ticket 018)
+      { t: 'frames' },
       { t: 'pruefe', sel: '.hud-stick', name: 'stickNochDa' },
       { t: 'up', id: 2, x: R.x + 50, y: R.y + 6 },
       { t: 'up', id: 1, x: L.x + 10, y: L.y - 40 },

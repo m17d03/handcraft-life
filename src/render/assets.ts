@@ -27,6 +27,34 @@ export interface KachelMaps {
 export interface WerkstattAssets {
   readonly modelle: Readonly<Record<ModellName, THREE.Object3D>>;
   readonly texturen: Readonly<Record<KachelName, KachelMaps>>;
+  /** Diagnose (Ticket 018): Ladedauer und gewählte KTX2-Zielformate. */
+  readonly info: AssetInfo;
+}
+
+/** Was beim Laden passiert ist – für Debug-Overlay und E2E-Fehlermeldungen. */
+export interface AssetInfo {
+  readonly ladeMs: number;
+  /** Vom KTX2Loader erkannte komprimierte Formate (true = wird als Transcodier-Ziel genutzt). */
+  readonly ktx2: Readonly<Record<string, boolean>>;
+  /** GL-Format der ersten Kacheltextur (hex) – zeigt, ob komprimiert oder RGBA übertragen wird. */
+  readonly texturFormat: string;
+}
+
+/**
+ * Nach dieser Zeit startet die Werkstatt mit Platzhaltern (statt still zu warten); geladen wird weiter, die
+ * Modelle werden eingebaut, sobald sie da sind. 20 s: auf dem Ziel-iPhone im WLAN dauert das Laden < 2 s.
+ */
+export const ASSET_FRIST_MS = 20_000;
+
+/** Verwirft `p` mit einem Fehler, wenn es nicht innerhalb von `ms` fertig ist. */
+export function mitFrist<T>(p: Promise<T>, ms: number, was: string): Promise<T> {
+  return new Promise<T>((aufloesen, verwerfen) => {
+    const uhr = setTimeout(() => { verwerfen(new Error(`${was}: keine Antwort nach ${String(Math.round(ms / 1000))} s`)); }, ms);
+    p.then(
+      (v) => { clearTimeout(uhr); aufloesen(v); },
+      (e: unknown) => { clearTimeout(uhr); verwerfen(e instanceof Error ? e : new Error(String(e))); },
+    );
+  });
 }
 
 /** Physische Kachelgrösse der Texturen in m (assets-phase1.md). */
@@ -42,38 +70,46 @@ export const KACHEL_M: Readonly<Record<KachelName, number>> = {
  * Wirft bei Netz- oder Formatfehlern; der Aufrufer fällt dann auf die Platzhalter zurück.
  */
 export async function ladeWerkstattAssets(renderer: THREE.WebGLRenderer, basisUrl: string): Promise<WerkstattAssets> {
+  const start = performance.now();
   const basis = basisUrl.endsWith('/') ? basisUrl : `${basisUrl}/`;
   const ktx2 = new KTX2Loader().setTranscoderPath(`${basis}basis/`).detectSupport(renderer);
+  const formate = { ...((ktx2 as unknown as { workerConfig: Record<string, boolean> | null }).workerConfig ?? {}) };
   try {
-    const gltf = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
-    const modellListe = await Promise.all(
-      MODELLE.map(async (name) => {
-        const g = await gltf.loadAsync(`${basis}assets/modelle/${name}.glb`);
-        return [name, g.scene] as const;
-      }),
-    );
-    const texturListe = await Promise.all(
-      KACHEL_TEXTUREN.map(async (name) => {
-        const laden = async (art: 'farbe' | 'normal' | 'orm'): Promise<THREE.Texture> => {
-          const t = await ktx2.loadAsync(`${basis}assets/texturen/${name}_${art}.ktx2`);
-          t.name = `${name}_${art}`;
-          t.wrapS = THREE.RepeatWrapping;
-          t.wrapT = THREE.RepeatWrapping;
-          t.colorSpace = art === 'farbe' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-          return t;
-        };
-        const [farbe, normal, orm] = await Promise.all([laden('farbe'), laden('normal'), laden('orm')]);
-        return [name, { farbe, normal, orm }] as const;
-      }),
-    );
-    return {
-      modelle: Object.fromEntries(modellListe) as unknown as Record<ModellName, THREE.Object3D>,
-      texturen: Object.fromEntries(texturListe) as unknown as Record<KachelName, KachelMaps>,
-    };
+    return await ladeAlles(ktx2, basis, formate, start);
   } finally {
     // Der Transcoder wird nur zum Laden gebraucht (Worker beenden); Texturdaten bleiben in den Vorlagen.
     ktx2.dispose();
   }
+}
+
+async function ladeAlles(ktx2: KTX2Loader, basis: string, formate: Record<string, boolean>, start: number): Promise<WerkstattAssets> {
+  const gltf = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const modellListe = await Promise.all(
+    MODELLE.map(async (name) => {
+      const g = await gltf.loadAsync(`${basis}assets/modelle/${name}.glb`);
+      return [name, g.scene] as const;
+    }),
+  );
+  const texturListe = await Promise.all(
+    KACHEL_TEXTUREN.map(async (name) => {
+      const laden = async (art: 'farbe' | 'normal' | 'orm'): Promise<THREE.Texture> => {
+        const t = await ktx2.loadAsync(`${basis}assets/texturen/${name}_${art}.ktx2`);
+        t.name = `${name}_${art}`;
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.colorSpace = art === 'farbe' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+        return t;
+      };
+      const [farbe, normal, orm] = await Promise.all([laden('farbe'), laden('normal'), laden('orm')]);
+      return [name, { farbe, normal, orm }] as const;
+    }),
+  );
+  const texturen = Object.fromEntries(texturListe) as unknown as Record<KachelName, KachelMaps>;
+  return {
+    modelle: Object.fromEntries(modellListe) as unknown as Record<ModellName, THREE.Object3D>,
+    texturen,
+    info: { ladeMs: Math.round(performance.now() - start), ktx2: formate, texturFormat: `0x${texturen['fichte-laengs'].farbe.format.toString(16)}` },
+  };
 }
 
 const TEXTUR_SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap', 'emissiveMap'] as const;

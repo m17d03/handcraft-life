@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 // Typen bringen die globalen Deklarationen window.__perf / window.__view mit.
 import type {} from '../../src/perf/perf-snapshot';
 import type { WerkstattViewDebug } from '../../src/render/view-api';
+import { diagnose, notiz } from './diagnose';
 
 declare global {
   interface Window {
@@ -55,24 +56,32 @@ test.describe('Spielseite /spiel/', () => {
       test.skip(true, 'Browser ohne WebGL 2');
       return;
     }
-    await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
+    // Ticket 018: Zeitreihe (Frames, Draw Calls) und Asset-/GL-Diagnose – in CI als Annotation, sonst in der Fehlermeldung
+    const vorher = await diagnose(page, 6000);
+    notiz(`018 render ${test.info().project.name}`, vorher);
+    try {
+      await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
+    } catch (e) {
+      throw new Error(`Kein Frame mit Draw Calls: ${JSON.stringify({ vorher, nachher: await diagnose(page), probleme })}`, { cause: e });
+    }
     const perf = await page.evaluate(() => window.__perf?.());
+    const diag = JSON.stringify({ perf, vorher, probleme });
     expect(perf).toBeDefined();
     if (!perf) return;
     expect(perf.schema).toBe(1);
     expect(perf.engine).toBe('three');
     expect(perf.engineVersion).toBe('187');
     expect(perf.scene).toBe('werkstatt');
-    expect(perf.timeToPlayableMs).not.toBeNull();
-    expect(perf.timeToFirstFrameMs).not.toBeNull();
-    expect(perf.drawCalls).toBeLessThan(80);
-    expect(perf.triangles).toBeGreaterThan(0);
-    expect(perf.triangles).toBeLessThan(150_000);
-    expect(perf.renderScale).toBeLessThanOrEqual(2.01);
+    expect(perf.timeToPlayableMs, diag).not.toBeNull();
+    expect(perf.timeToFirstFrameMs, diag).not.toBeNull();
+    expect(perf.drawCalls, diag).toBeLessThan(80);
+    expect(perf.triangles, diag).toBeGreaterThan(0);
+    expect(perf.triangles, diag).toBeLessThan(150_000);
+    expect(perf.renderScale, diag).toBeLessThanOrEqual(2.01);
     expect(['msaa', 'none']).toContain(perf.aa);
     if (perf.aa === 'msaa') expect(perf.msaaSamples).toBeGreaterThan(0);
-    expect(perf.contextLostCount).toBe(0);
-    expect(perf.errorCount).toBe(0);
+    expect(perf.contextLostCount, diag).toBe(0);
+    expect(perf.errorCount, diag).toBe(0);
     expect(probleme).toEqual([]);
   });
 
@@ -196,7 +205,12 @@ test.describe('Spielseite /spiel/', () => {
     await page.evaluate(() => { (window as unknown as { __lose: WEBGL_lose_context }).__lose.restoreContext(); });
     await expect.poll(() => page.evaluate(() => window.__view?.zustand().kontextVerloren), LANG).toBe(false);
     await expect.poll(() => page.evaluate(() => window.__view?.zustand().frames ?? 0), LANG).toBeGreaterThan(framesVorher + 1);
-    await expect.poll(() => page.evaluate(() => window.__perf?.().drawCalls ?? 0), LANG).toBeGreaterThan(0);
+    // Ticket 018: Zeitreihe nach der Wiederherstellung (in CI als Annotation, sonst in der Fehlermeldung)
+    const nachWieder = await diagnose(page, 4000);
+    notiz(`018 kontext ${test.info().project.name}`, nachWieder);
+    await expect
+      .poll(() => page.evaluate(() => window.__perf?.().drawCalls ?? 0), { ...LANG, message: JSON.stringify({ nachWieder, probleme }) })
+      .toBeGreaterThan(0);
     const id = await page.evaluate(() => {
       const p = window.__view?.weltNachBildschirm(1000);
       return p ? window.__view?.pick(p.x, p.y) : null;
@@ -207,6 +221,49 @@ test.describe('Spielseite /spiel/', () => {
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     // Konsolenmeldungen des Browsers zum absichtlichen Verlust sind kein Fehler der Seite
     expect(probleme.filter((p) => !/CONTEXT_LOST|context lost|loseContext/i.test(p))).toEqual([]);
+  });
+
+  test('Asset-Ladefehler (Basis-Transcoder fehlt) → Platzhalter, Szene zeichnet, Hinweis im Debug-Overlay', async ({ page }) => {
+    // Ticket 018: Ein Ladefehler darf nie zu stillem Nichts führen
+    await page.route('**/basis/**', (r) => r.abort());
+    await page.goto(SPIEL);
+    if (!(await bereit(page))) {
+      test.skip(true, 'Browser ohne WebGL 2');
+      return;
+    }
+    const z = await page.evaluate(() => window.__view?.zustand());
+    expect(z?.assets, JSON.stringify(z?.diagnose)).toBe('platzhalter');
+    expect(z?.diagnose.assetFehler).toBeTruthy();
+    await expect(page.locator('#debug-overlay')).toContainText('Assets nicht geladen');
+    // Spieler-Hinweis (auch ohne Debug sichtbar), bleibt nach „bereit“ stehen, liegt über dem HUD und
+    // überdeckt keine sichtbaren HUD-Elemente (QA 018 N3)
+    const hinweis = page.locator('#spiel-status');
+    await expect(hinweis).toBeVisible();
+    await expect(hinweis).toContainText('Einfache Grafik');
+    const lage = await page.evaluate(() => {
+      const s = document.querySelector('#spiel-status');
+      if (!s) return null;
+      const r = s.getBoundingClientRect();
+      const ueber = (a: DOMRect, b: DOMRect): boolean => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const verdeckt: string[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>('.hud-oben *, .hud-hinweis, .hud-aktionstaste, .hud-messwert, .hud-leiste, .hud-endpruefung')) {
+        const b = el.getBoundingClientRect();
+        if (b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== 'hidden' && ueber(r, b)) verdeckt.push(el.className);
+      }
+      // unten vor 84 px: darunter liegen HUD-Hinweis und (Werkbank) Sägespur
+      return { verdeckt, z: Number(getComputedStyle(s).zIndex), innen: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= 84, rect: [r.left, r.top, r.right, r.bottom] };
+    });
+    // Hochformat ist nicht spielbar (ADR 0004, „Bitte quer halten“ deckt alles) – Überdeckung zählt nur quer
+    const vp = page.viewportSize();
+    if (vp && vp.width > vp.height) expect(lage?.verdeckt).toEqual([]);
+    expect(lage?.z).toBeGreaterThan(30);
+    expect(lage?.innen, JSON.stringify(lage?.rect)).toBe(true);
+    await page.waitForFunction(() => (window.__perf?.().drawCalls ?? 0) > 0, null, LANG);
+    const id = await page.evaluate(() => {
+      const p = window.__view?.weltNachBildschirm(1000);
+      return p ? window.__view?.pick(p.x, p.y) : null;
+    });
+    expect(id).toBe('brett');
   });
 
   test('Hochformat zeigt „Bitte quer halten“, Querformat nicht', async ({ page }) => {

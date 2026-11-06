@@ -70,11 +70,14 @@ function summe(verz) {
   return s;
 }
 
+// Seit ADR 0005 entstehen die Modelle in Blender (tools/blender/alle.py). Diese Node-Pipeline baut standardmässig
+// nur noch die Texturen; die alten Node-Modelle nur mit --alte-modelle (überschreibt public/assets/modelle/!).
 const nurModelle = process.argv.includes('--nur-modelle');
+const alteModelle = nurModelle || process.argv.includes('--alte-modelle');
 if (!nurModelle) rmSync(join(AUS, 'texturen'), { recursive: true, force: true });
-rmSync(join(AUS, 'modelle'), { recursive: true, force: true });
+if (alteModelle) rmSync(join(AUS, 'modelle'), { recursive: true, force: true });
 const z1 = nurModelle ? [] : await texturen();
-const z2 = await modelle();
+const z2 = alteModelle ? await modelle() : [];
 console.log(`\nAusgabe ${relative(WURZEL, AUS)}/`);
 for (const z of [...z1, ...z2]) console.log(z);
 console.log(`Gesamt public/assets: ${(summe(AUS) / 1024 / 1024).toFixed(2)} MB (Grenze 6 MB)`);
