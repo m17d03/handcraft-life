@@ -13,8 +13,9 @@ export type SicherungsArt = 'autosave' | 'vor-migration' | 'defekt' | 'zuNeu';
 
 export interface Sicherung {
   /**
-   * Schlüssel `<art>|<Laufnummer, 10-stellig>|<ISO-Zeit>`. Die Laufnummer steigt über alle Sicherungen und
-   * Sitzungen (max. vorhandene + 1); Rotation richtet sich nach ihr, nie nach der Uhr.
+   * Schlüssel `<art>|<Laufnummer, 10-stellig>[.<Tab-Kennung>]|<ISO-Zeit>`. Die Laufnummer steigt über alle
+   * Sicherungen und Sitzungen (max. bekannte + 1); Rotation richtet sich nach ihr, nie nach der Uhr. Die
+   * Tab-Kennung (IndexedDB, Ticket 020) macht sie eindeutig, wenn zwei Tabs dieselbe Nummer wählen.
    */
   schluessel: string;
   art: SicherungsArt;
@@ -51,24 +52,59 @@ export interface Ablage {
   sicherungen(): Promise<Sicherung[]>;
 }
 
-function laufnummer(schluessel: string): number {
-  const nr = Number(schluessel.split('|')[1]);
+/** Teil des Schlüssels nach `<art>|` – nach ihm wird sortiert (Laufnummer 10-stellig, dann Tab-Kennung, dann Zeit). */
+function rang(schluessel: string): string {
+  return schluessel.slice(schluessel.indexOf('|') + 1);
+}
+
+/** Laufnummer (Zahl) eines Schlüssels; eine angehängte Tab-Kennung (`.<tab>`, Ticket 020) zählt nicht mit. */
+export function laufnummer(schluessel: string): number {
+  const nr = Number.parseInt(schluessel.split('|')[1] ?? '', 10);
   return Number.isFinite(nr) ? nr : 0;
 }
 
-export const nachLaufnummer = (a: Sicherung, b: Sicherung): number => laufnummer(a.schluessel) - laufnummer(b.schluessel);
+/** Art eines Schlüssels (Text vor dem ersten `|`). */
+export function artVon(schluessel: string): string {
+  return schluessel.slice(0, schluessel.indexOf('|'));
+}
+
+/**
+ * Ordnung der Sicherungen: Laufnummer, bei gleicher Laufnummer (zwei Tabs) Tab-Kennung. Innerhalb einer Art
+ * ist das genau die Textordnung der Schlüssel – darum kann IndexedDB „alles unterhalb von Schlüssel X“ als
+ * Schlüsselbereich löschen, ohne die Schlüssel vorher zu lesen (Ticket 020).
+ */
+export function vergleicheSchluessel(a: string, b: string): number {
+  const ra = rang(a);
+  const rb = rang(b);
+  return ra < rb ? -1 : ra > rb ? 1 : 0;
+}
+
+export const nachLaufnummer = (a: Sicherung, b: Sicherung): number => vergleicheSchluessel(a.schluessel, b.schluessel);
+
+/**
+ * Schlüssel `<art>|<Laufnummer 10-stellig>[.<tab>]|<zeit>`. Die Tab-Kennung macht Laufnummern eindeutig, auch
+ * wenn zwei Tabs gleichzeitig dieselbe nächste Nummer wählen (Ticket 020, A2).
+ */
+export function schluesselFuer(art: SicherungsArt, nr: number, zeit: string, tab = ''): string {
+  return `${art}|${String(nr).padStart(10, '0')}${tab === '' ? '' : `.${tab}`}|${zeit}`;
+}
 
 /** Nächster Schlüssel: Laufnummer = grösste vorhandene + 1 (unabhängig von der Uhr). */
-export function naechsterSchluessel(art: SicherungsArt, zeit: string, vorhandene: readonly string[]): string {
+export function naechsterSchluessel(art: SicherungsArt, zeit: string, vorhandene: readonly string[], tab = ''): string {
   const nr = vorhandene.reduce((max, k) => Math.max(max, laufnummer(k)), 0) + 1;
-  return `${art}|${String(nr).padStart(10, '0')}|${zeit}`;
+  return schluesselFuer(art, nr, zeit, tab);
 }
 
-/** Schlüssel der Art `art`, die über `BEHALTEN[art]` hinausgehen (kleinste Laufnummern zuerst). */
+/** Schlüssel der Art `art`, die über `BEHALTEN[art]` hinausgehen (älteste zuerst). */
 export function zuLoeschende(art: SicherungsArt, vorhandene: readonly string[]): string[] {
-  const eigene = vorhandene.filter((k) => k.startsWith(`${art}|`)).sort((a, b) => laufnummer(a) - laufnummer(b));
+  const eigene = vorhandene.filter((k) => k.startsWith(`${art}|`)).sort(vergleicheSchluessel);
   return eigene.slice(0, Math.max(0, eigene.length - BEHALTEN[art]));
 }
+
+/** Arten, die rotieren (endliches `BEHALTEN`); `vor-migration` gehört nie dazu. */
+export const ROTIERENDE_ARTEN: readonly SicherungsArt[] = (Object.keys(BEHALTEN) as SicherungsArt[]).filter((a) =>
+  Number.isFinite(BEHALTEN[a]),
+);
 
 /**
  * In-Memory-Ablage für Tests und als Rückfall, wenn IndexedDB fehlt. Transaktionen arbeiten auf einer Kopie
