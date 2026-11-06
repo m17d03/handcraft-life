@@ -470,6 +470,150 @@ test.describe('Vertical Slice 0.1 (/spiel/)', () => {
     });
   }
 
+  // QA 017 Runde 1: echte Navigation weg 0/50/100 ms nach einer Aktion (Seitenabbau verwirft Transaktionen,
+  // die noch auf Callbacks warten). Ablauf per Touch bis vor die Aktion, dann Aktion + Navigation im selben Task.
+  for (const aktion of ['anreissen', 'schnitt', 'abliefern'] as const) {
+    for (const d of [0, 50, 100]) {
+      test(`Ticket 017: Navigation weg ${String(d)} ms nach ${aktion} verliert nichts`, async ({ page }) => {
+        test.skip(hochkant(page), 'Querformat-Ablauf');
+        await page.goto(SPIEL);
+        if (!(await bereit(page))) {
+          test.skip(true, 'Browser ohne WebGL 2');
+          return;
+        }
+        await zurWerkbank(page);
+        await gespeichert(page);
+        // Bezugsende: sauberes Ende
+        let z = await zustand(page);
+        const ws = z?.inventar.werkstuecke.find((w) => w.id === z?.arbeit?.werkstueckId);
+        const L = ws?.masse_mm.l ?? 2000;
+        const sauber = Math.abs(ws?.enden.a.winkel_grad ?? 0) <= Math.abs(ws?.enden.b.winkel_grad ?? 0) ? 'a' : 'b';
+        const tipp = await page.evaluate((mm) => window.__view?.weltNachBildschirm(mm) ?? null, sauber === 'a' ? 40 : L - 40);
+        if (!tipp) throw new Error('Brett nicht im Bild');
+        await tippen(page, tipp);
+        const pruefung = page.getByRole('dialog', { name: 'Brettende prüfen' });
+        await pruefung.getByRole('button', { name: 'Von hier messen' }).tap();
+        await expect.poll(() => phase(page), LANG).toBe('messen');
+        // Messen 600 mm
+        const griff = await mitte(page, '.hud-massband-griff');
+        const pxProMm = await page.evaluate(() => {
+          const a = window.__view?.weltNachBildschirm(0);
+          const b = window.__view?.weltNachBildschirm(100);
+          return a && b ? (b.x - a.x) / 100 : 0;
+        });
+        await zeiger(page, ziehe(1, griff, { x: griff.x + 600 * pxProMm, y: griff.y }, 12));
+        let mass = (await ui(page))?.massMm ?? 0;
+        for (let i = 0; i < 80 && mass !== 600; i++) {
+          await page.locator(mass < 600 ? '.hud-fein[data-fein="0.5"]' : '.hud-fein[data-fein="-0.5"]').tap();
+          mass = (await ui(page))?.massMm ?? 0;
+        }
+        expect(mass).toBe(600);
+        if (aktion !== 'anreissen') {
+          await page.locator('.hud-anreissen').tap();
+          await expect.poll(() => phase(page), LANG).toBe('ansetzen');
+          const blatt = await mitte(page, '.hud-ansetzen');
+          await zeiger(page, ziehe(2, blatt, { x: blatt.x + 16, y: blatt.y }, 4));
+          await expect.poll(async () => (await zustand(page))?.arbeit?.blattversatz_mm, LANG).toBeCloseTo(0.8, 5);
+          await page.getByRole('button', { name: 'Sägen ›' }).tap();
+          await expect(page.locator('.hud')).toHaveAttribute('data-modus', 'werkbank-saegen');
+        }
+        if (aktion === 'abliefern') {
+          await saegen(page, 12);
+          await expect.poll(() => phase(page), LANG).toBe('ergebnis');
+          await gespeichert(page);
+        }
+        if (aktion === 'schnitt') {
+          // Sägezüge bis zum Ergebnis; im Task, in dem die Phase wechselt, Navigation einleiten
+          const spur = await mitte(page, '.hud-saegespur');
+          const stuetzen = await mitte(page, '.hud-stuetzen');
+          const oben = spur.top + 30;
+          const unten = spur.top + spur.h - 30;
+          await page
+            .evaluate(
+              async ({ spur, stuetzen, oben, unten, d }) => {
+                const ev = (el: Element, t: string, id: number, x: number, y: number): void => {
+                  el.dispatchEvent(
+                    new PointerEvent(`pointer${t}`, {
+                      pointerId: id,
+                      pointerType: 'touch',
+                      isPrimary: false,
+                      clientX: x,
+                      clientY: y,
+                      bubbles: true,
+                      cancelable: true,
+                    }),
+                  );
+                };
+                const st = document.elementFromPoint(stuetzen.x, stuetzen.y) ?? document.body;
+                const sp = document.elementFromPoint(spur.x, oben) ?? document.body;
+                ev(st, 'down', 5, stuetzen.x, stuetzen.y);
+                ev(sp, 'down', 6, spur.x, oben);
+                for (let h = 0; h < 40; h++) {
+                  const [von, nach] = h % 2 === 0 ? [oben, unten] : [unten, oben];
+                  for (let i = 1; i <= 6; i++) {
+                    ev(sp, 'move', 6, spur.x + 4, von + ((nach - von) * i) / 6);
+                    const z = window.__spiel?.zustand() ?? null;
+                    if (z?.arbeit?.phase === 'ergebnis') {
+                      sessionStorage.setItem('t017', JSON.stringify(z));
+                      const weg = (): void => {
+                        location.href = 'about:blank';
+                      };
+                      if (d === 0) weg();
+                      else setTimeout(weg, d);
+                      return z;
+                    }
+                    await new Promise((r) => setTimeout(r, 25));
+                  }
+                }
+                return null;
+              },
+              { spur, stuetzen, oben, unten, d },
+            )
+            // Navigation im selben Task kann die Antwort verschlucken – Ergebnis liegt in sessionStorage
+            .catch(() => undefined);
+        } else {
+          await page.evaluate(
+            ({ sel, d }) => {
+              const b = document.querySelector<HTMLButtonElement>(sel);
+              if (!b || b.disabled) return null;
+              b.click();
+              const z = window.__spiel?.zustand() ?? null;
+              sessionStorage.setItem('t017', JSON.stringify(z));
+              const weg = (): void => {
+                location.href = 'about:blank';
+              };
+              if (d === 0) weg();
+              else setTimeout(weg, d);
+              return z;
+            },
+            {
+              sel: aktion === 'anreissen' ? '.hud-anreissen' : '.hud-abliefern',
+              d,
+            },
+          );
+        }
+        await page.waitForURL('about:blank', { timeout: 15_000 }).catch(() => undefined);
+        test.skip(page.url() !== 'about:blank', 'Aktion nicht möglich (z. B. Ausschuss)');
+        await page.goto(SPIEL);
+        expect(await bereit(page)).toBe(true);
+        const nachAktion = await page.evaluate(
+          () => JSON.parse(sessionStorage.getItem('t017') ?? 'null') as ReturnType<NonNullable<typeof window.__spiel>['zustand']> | null,
+        );
+        expect(nachAktion).not.toBeNull();
+        z = await zustand(page);
+        if (aktion === 'anreissen') {
+          expect(z?.arbeit?.phase).toBe('ansetzen');
+          expect(z?.arbeit?.markierung_mm).toBe(600);
+        } else if (aktion === 'schnitt') {
+          expect(z?.arbeit?.phase).toBe('ergebnis');
+          expect(z?.arbeit?.ergebnis).toEqual(nachAktion?.arbeit?.ergebnis);
+        } else {
+          expect(z?.arbeit).toBeNull();
+          expect(z?.inventar.geld).toBe(nachAktion?.inventar.geld);
+        }
+      });
+    }
+  }
   test('Ticket 017 N3: Anschlagwinkel zeigt das schiefe Ende in der Bezugsende-Phase (Lichtspalt)', async ({ page }) => {
     test.skip(hochkant(page), 'Querformat-Ablauf');
     await page.goto('./spiel/?debug=1&saat=7&test=1&dpr=1&aa=0');
