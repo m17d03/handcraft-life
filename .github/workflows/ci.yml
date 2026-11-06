@@ -17,7 +17,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,7 +29,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       # WebKit-Download war mehrfach unzuverlässig (hing 40 min bzw. scheiterte) → Browser zwischenspeichern
-      # (Schlüssel = Playwright-Version), Systempakete separat, beides mit Zeitgrenze und Wiederholung.
+      # (Schlüssel = Playwright-Version).
       - name: Playwright-Version ermitteln
         id: pw
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -39,16 +39,18 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      # Systempakete (apt) laden zeitweise > 5 min: keine innere Zeitgrenze (ein abgebrochenes apt-get hielt die
+      # dpkg-Sperre und liess jeden Wiederholungsversuch scheitern), nur die Schritt-Grenze. Wiederholt wird nur
+      # der Browser-Download, der bei Treffer im Zwischenspeicher entfällt.
+      - name: WebKit-Systempakete installieren
+        timeout-minutes: 20
+        run: npx playwright install-deps webkit
       - name: WebKit installieren
-        timeout-minutes: 15
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 12
         run: |
           for versuch in 1 2 3; do
-            ok=1
-            timeout 300 npx playwright install-deps webkit || ok=0
-            if [ "$ok" = 1 ] && [ "${{ steps.pw-cache.outputs.cache-hit }}" != "true" ]; then
-              timeout 300 npx playwright install webkit || ok=0
-            fi
-            [ "$ok" = 1 ] && exit 0
+            timeout 240 npx playwright install webkit && exit 0
             echo "Versuch $versuch fehlgeschlagen, neuer Versuch in 20 s"; sleep 20
           done
           exit 1
