@@ -16,7 +16,11 @@ declare global {
 // Home-Bildschirm-App (5× Geldanzeige). Gesten als synthetische Pointer-Events wie in hud.spec.ts.
 
 const LANG = { timeout: 60_000 };
-const SCREENSHOTS = resolve(import.meta.dirname, '../../docs/screenshots/016');
+// Dokumentations-Screenshots nur mit DOKU_SCREENSHOTS=1 nach docs/ schreiben, sonst in test-results/
+// (Tests dürfen versionierte Dateien nicht verändern).
+const SCREENSHOTS = process.env['DOKU_SCREENSHOTS'] === '1'
+  ? resolve(import.meta.dirname, '../../docs/screenshots/016')
+  : resolve(import.meta.dirname, '../../test-results/screenshots-016');
 
 /** Längste echte Texte (src/spiel/ablauf.ts, endpruefung.ts) – Worst Case für Umbruch und Platz. */
 const RISS_HINWEIS = 'Schritt 1/6 · Riss am rechten Ende! Prüfe beide Enden – miss vom rechtwinkligen.';
