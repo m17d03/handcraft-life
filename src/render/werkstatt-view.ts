@@ -313,6 +313,8 @@ class WerkstattViewThree implements WerkstattViewDebug {
     this.kamera.updateProjectionMatrix();
     if (this.arbeit) {
       this.arbeitsZiel = this.berechneArbeitsPose();
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Grössenänderung vor starten()
+      if (this.szene) this.anwenden(false); // Massstab des Lichtspalts folgt der Grösse
     }
   };
 
@@ -347,9 +349,20 @@ class WerkstattViewThree implements WerkstattViewDebug {
       risse: this.risse,
       winkel: this.winkel,
       endenPruefen: this.endenPruefen(),
+      pxProM: this.endenPruefen() ? this.massstabArbeit() : null,
     });
     if (schatten) this.renderer.shadowMap.needsUpdate = true;
     this.feedbackOffen = true;
+  }
+
+  /** CSS-px je m am Brett in der (Ziel-)Arbeitsansicht – unabhängig von einer laufenden Kamerafahrt. */
+  private massstabArbeit(): number | null {
+    const ziel = this.arbeitsZiel;
+    if (!ziel) return null;
+    const proj = { eye: ziel.eye, forward: forwardFromYawPitch(ziel.yaw, ziel.pitch), fovY: KAMERA.fovY, breite: this.cssW, hoehe: this.cssH };
+    const a = projectToScreen(proj, [BRETT.x - 0.5, BRETT_OBEN_Y, BRETT.z]);
+    const b = projectToScreen(proj, [BRETT.x + 0.5, BRETT_OBEN_Y, BRETT.z]);
+    return a && b ? Math.abs(b.x - a.x) : null;
   }
 
   /** Bezugsende-Phase: Arbeitsansicht, Brett ungeschnitten, noch kein Bezugsende gewählt (Ticket 017, N3). */

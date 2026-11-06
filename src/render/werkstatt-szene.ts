@@ -111,6 +111,8 @@ export interface SzenenZustand {
    * ein Lichtspalt die Abweichung.
    */
   readonly endenPruefen?: boolean;
+  /** Bildschirm-Massstab am Brett in der Arbeitsansicht (CSS-px je m) – für Mindestgrössen des Lichtspalts. */
+  readonly pxProM?: number | null;
 }
 
 /** Anschlagwinkel (m): Stahlzunge quer über das Brettende, Anschlag aus Holz an der vorderen Brettkante. */
@@ -151,6 +153,25 @@ export function lichtspalt(
   const zOffen = -zAnlage;
   const zungeX = stirnX(zAnlage);
   return { zungeX, zAnlage, zOffen, spaltM: Math.abs(stirnX(zOffen) - zungeX) };
+}
+
+/** Mindestgrössen des Lichtspalts auf dem Bildschirm (CSS-px), damit er auch in kleinen Ansichten lesbar ist. */
+export const LICHTSPALT_PX = { keil: 5, schein: 18 } as const;
+
+/**
+ * Darstellung des Lichtspalts (QA 017 R1, N3 bei 667 pt): Keilbreite an der offenen Kante und Breite des
+ * Scheins in m – mindestens `LICHTSPALT_PX` Bildschirm-Pixel (bei bekanntem Massstab `pxProM`), sonst die
+ * gezeichnete Spaltbreite. Unter `LICHTSPALT_MIN_M` (sauberes Ende) nichts: `null`.
+ */
+export function spaltDarstellung(spaltM: number, pxProM: number | null): { keilM: number; scheinM: number; deckkraft: number } | null {
+  if (!(spaltM >= LICHTSPALT_MIN_M)) return null;
+  const massstab = pxProM !== null && Number.isFinite(pxProM) && pxProM > 0 ? pxProM : null;
+  const minKeil = massstab === null ? 0 : LICHTSPALT_PX.keil / massstab;
+  const minSchein = massstab === null ? 0 : LICHTSPALT_PX.schein / massstab;
+  const keilM = Math.max(spaltM, minKeil);
+  // Kleine Ansicht (Spalt < 8 px): Schein kräftiger
+  const klein = massstab !== null && spaltM * massstab < 8;
+  return { keilM, scheinM: Math.max(spaltM + 0.016, minSchein), deckkraft: klein ? 0.8 : 0.55 };
 }
 
 function geometrie(m: MeshDaten): THREE.BufferGeometry {
@@ -805,7 +826,7 @@ export class WerkstattSzene {
   aktualisiere(z: SzenenZustand): void {
     this.setzeBrett(z.lage, z.winkel);
     this.setzeRisse(z.lage, z.risse, z.winkel);
-    this.setzeAnschlagwinkel(z.lage, z.winkel, z.endenPruefen === true);
+    this.setzeAnschlagwinkel(z.lage, z.winkel, z.endenPruefen === true, z.pxProM ?? null);
     this.setzeMarkierung(z.lage, z.markierungMm);
     this.setzeMassband(z.lage, z.massbandMm);
     this.setzeSaege(z.lage, z.markierungMm, z.saege);
@@ -855,7 +876,7 @@ export class WerkstattSzene {
   }
 
   /** Anschlagwinkel an beiden Werksenden (nur ungeschnitten, in der Bezugsende-Phase), Lichtspalt am schiefen Ende. */
-  private setzeAnschlagwinkel(lage: BrettLage, winkel: EndWinkel, pruefen: boolean): void {
+  private setzeAnschlagwinkel(lage: BrettLage, winkel: EndWinkel, pruefen: boolean, pxProM: number | null): void {
     const st = brettStuecke(lage)[0];
     const an = pruefen && lage.schnittIstMm === null && st !== undefined;
     for (const ende of ['a', 'b'] as const) {
@@ -871,11 +892,13 @@ export class WerkstattSzene {
       const [mx, , mz] = st.mitte;
       const y = BRETT_OBEN_Y;
       p.winkel.position.set(mx + l.zungeX, y, mz);
-      if (l.spaltM < LICHTSPALT_MIN_M) continue;
-      // Keil: Zungen-Innenkante (Anlagepunkt → offene Kante) und Stirn an der offenen Kante
-      const stirnOffen = l.zungeX - seite * l.spaltM;
+      const dar = spaltDarstellung(l.spaltM, pxProM);
+      if (dar === null) continue;
+      // Keil: Zungen-Innenkante (Anlagepunkt → offene Kante) und Stirn an der offenen Kante. In kleinen
+      // Ansichten mindestens LICHTSPALT_PX.keil breit (Licht fällt dann sichtbar über die Stirnkante).
+      const stirnOffen = l.zungeX - seite * dar.keilM;
       const pos = p.spalt.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const ys = y + 0.0001;
+      const ys = y + 0.0003;
       pos.setXYZ(0, mx + l.zungeX, ys, mz + l.zAnlage);
       pos.setXYZ(1, mx + l.zungeX, ys, mz + l.zOffen);
       pos.setXYZ(2, mx + stirnOffen, ys, mz + l.zOffen);
@@ -883,8 +906,9 @@ export class WerkstattSzene {
       p.spalt.geometry.computeBoundingSphere();
       p.spalt.visible = true;
       // Weicher Schein über der offenen Hälfte des Spalts (Licht fällt durch den Spalt)
-      p.schein.position.set(mx + l.zungeX - (seite * l.spaltM) / 2, y + 0.0016, mz + (l.zAnlage * 0.15 + l.zOffen * 0.85) * 0.75);
-      p.schein.scale.set(l.spaltM + 0.016, 1, breiteM * 0.75);
+      p.schein.position.set(mx + l.zungeX - (seite * dar.keilM) / 2, y + 0.0016, mz + (l.zAnlage * 0.15 + l.zOffen * 0.85) * 0.75);
+      p.schein.scale.set(dar.scheinM, 1, breiteM * 0.75);
+      (p.schein.material as THREE.MeshBasicMaterial).opacity = dar.deckkraft;
       p.schein.visible = true;
     }
   }

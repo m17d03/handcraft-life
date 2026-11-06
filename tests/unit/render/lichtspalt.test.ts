@@ -1,6 +1,6 @@
 /** Ticket 017 (N3): Lichtspalt am Anschlagwinkel folgt der gezeichneten Schräge (endenScheren). */
 import { describe, expect, it } from 'vitest';
-import { endenScheren, ENDWINKEL_UEBERZEICHNUNG, LICHTSPALT_MIN_M, lichtspalt } from '../../../src/render/werkstatt-szene';
+import { endenScheren, ENDWINKEL_UEBERZEICHNUNG, LICHTSPALT_MIN_M, LICHTSPALT_PX, lichtspalt, spaltDarstellung } from '../../../src/render/werkstatt-szene';
 
 const L = 2;
 const B = 0.14;
@@ -43,4 +43,33 @@ describe('Lichtspalt', () => {
       expect(l.spaltM).toBeGreaterThan(LICHTSPALT_MIN_M * 1.5);
     });
   }
+});
+
+describe('Lichtspalt-Darstellung in kleinen Ansichten (QA 017 R1)', () => {
+  const sauberMax = lichtspalt(L, B, 1, k((Math.atan(0.3 / 70) * 180) / Math.PI)).spaltM;
+  const schiefMin = lichtspalt(L, B, 1, k((Math.atan(1 / 70) * 180) / Math.PI)).spaltM;
+
+  it('sauberes Ende leuchtet bei keinem Massstab', () => {
+    for (const px of [null, 250, 330, 500, 2000]) expect(spaltDarstellung(sauberMax, px)).toBeNull();
+  });
+
+  for (const pxProM of [250, 330, 420]) {
+    it(`schiefes Ende bei ${String(pxProM)} px/m: Keil ≥ ${String(LICHTSPALT_PX.keil)} px, Schein ≥ ${String(LICHTSPALT_PX.schein)} px`, () => {
+      const d = spaltDarstellung(schiefMin, pxProM);
+      expect(d).not.toBeNull();
+      expect((d?.keilM ?? 0) * pxProM).toBeGreaterThanOrEqual(LICHTSPALT_PX.keil - 1e-9);
+      expect((d?.scheinM ?? 0) * pxProM).toBeGreaterThanOrEqual(LICHTSPALT_PX.schein - 1e-9);
+      expect(d?.keilM ?? 0).toBeGreaterThanOrEqual(schiefMin);
+    });
+  }
+
+  it('grosse Ansicht: Keil = echte gezeichnete Spaltbreite', () => {
+    const d = spaltDarstellung(0.01, 3000);
+    expect(d?.keilM).toBeCloseTo(0.01, 9);
+    expect(d?.deckkraft).toBe(0.55);
+  });
+
+  it('ohne Massstab: gezeichnete Breite', () => {
+    expect(spaltDarstellung(0.006, null)?.keilM).toBeCloseTo(0.006, 9);
+  });
 });
