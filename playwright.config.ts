@@ -23,6 +23,9 @@ const iphone = (name: string, device: keyof typeof devices): Project =>
 export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: true,
+  // CI: WebKit rendert ohne GPU per CPU; zwei parallele Instanzen nahmen sich die CPU weg (page.evaluate > 120 s,
+  // Lauf 42298703256). Ein Worker ist langsamer, aber verlässlich. Lokal bleibt die Parallelität.
+  ...(process.env['CI'] ? { workers: 1 } : {}),
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
   // In GitHub Actions zusätzlich Annotationen am Check-Run (Fehlermeldungen öffentlich lesbar, Ticket 018)
